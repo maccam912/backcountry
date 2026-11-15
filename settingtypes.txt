@@ -1,0 +1,9 @@
+[Backcountry]
+# Length of a full year in game days. A new world begins on the first day of summer.
+bc_year_length (Year length in days) int 40 8 400
+# Show contextual survival tips to new players.
+bc_hints (Show survival tips) bool true
+# Wildlife density multiplier.
+bc_wildlife (Wildlife density) float 1.0 0.0 3.0
+# Show temperatures in Fahrenheit by default. Each player can switch in the journal's Notes tab.
+bc_fahrenheit (Fahrenheit by default) bool false
