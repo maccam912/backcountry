@@ -7,3 +7,7 @@ bc_hints (Show survival tips) bool true
 bc_wildlife (Wildlife density) float 1.0 0.0 3.0
 # Show temperatures in Fahrenheit by default. Each player can switch in the journal's Notes tab.
 bc_fahrenheit (Fahrenheit by default) bool false
+# How fast the body burns energy. 1.0 is normal; lower makes food last longer.
+bc_energy_use (Energy use) float 1.0 0.25 3.0
+# How long fuel lasts on a fire. 1.0 is normal; higher makes it burn longer.
+bc_fuel_life (Fuel life) float 1.0 0.25 4.0

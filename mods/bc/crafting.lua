@@ -3,13 +3,17 @@
 -- every item in `unlock`, or once they have learned the journal note
 -- named by `secret`. The Crafting tab of the journal only lists known ones;
 -- the craft grid itself always works, so experimenting pays off.
+--
+-- Making things is also practised. A recipe made once by hand can be laid
+-- out in the craft grid from the journal; made five times it is second
+-- nature, and is made on the way whenever another recipe needs its output.
 bc.recipes = {}
 bc.recipe_by_id = {}
 
 local function craft(id, cat, output, items, opts)
 	opts = opts or {}
 	core.register_craft({type = "shapeless", output = output, recipe = items, replacements = opts.replacements})
-	local r = {id = id, cat = cat, output = output, items = items,
+	local r = {id = id, cat = cat, output = output, items = items, replacements = opts.replacements,
 		unlock = opts.unlock, secret = opts.secret, note = opts.note}
 	bc.recipes[#bc.recipes + 1] = r
 	bc.recipe_by_id[id] = r
@@ -178,4 +182,264 @@ function bc.item_label(name)
 	local def = core.registered_items[ItemStack(name):get_name()]
 	local desc = def and def.description or name
 	return (desc:match("^[^\n]*"))
+end
+
+-- ---------------------------------------------------------------------
+-- Practice
+-- ---------------------------------------------------------------------
+bc.CRAFT_LAYOUT = 1   -- times made before the journal will lay a recipe out
+bc.CRAFT_AUTO = 5     -- times made before it is made for you along the way
+
+function bc.times_crafted(st, r)
+	return st.p.crafted[r.id] or 0
+end
+
+local function is_group(ingredient)
+	return ingredient:sub(1, 6) == "group:"
+end
+
+local function fits(ingredient, name)
+	if is_group(ingredient) then return core.get_item_group(name, ingredient:sub(7)) > 0 end
+	return ingredient == name
+end
+
+local function keeps(name)
+	return core.get_item_group(name, "bc_keep") > 0
+end
+
+-- The recipe a craft grid was laid out for, given what it produced.
+function bc.recipe_for_grid(grid, output)
+	local names = {}
+	for _, stack in ipairs(grid) do
+		if not stack:is_empty() then names[#names + 1] = stack:get_name() end
+	end
+	local out_name = ItemStack(output):get_name()
+	for _, r in ipairs(bc.recipes) do
+		if #r.items == #names and ItemStack(r.output):get_name() == out_name then
+			local left, ok = table.copy(names), true
+			for pass = 1, 2 do   -- named ingredients claim theirs before "any knife" ones
+				for _, ingredient in ipairs(r.items) do
+					if is_group(ingredient) == (pass == 2) then
+						local found
+						for i, name in ipairs(left) do
+							if fits(ingredient, name) then found = i break end
+						end
+						if found then table.remove(left, found) else ok = false end
+					end
+				end
+			end
+			if ok then return r end
+		end
+	end
+end
+
+local function practise(player, st, r)
+	local n = bc.times_crafted(st, r) + 1
+	st.p.crafted[r.id] = n
+	st.pack_note = nil
+	if n == bc.CRAFT_LAYOUT then
+		bc.hint(player, "craft_layout")
+	elseif n == bc.CRAFT_AUTO then
+		bc.toast(player, "Second nature: " .. bc.item_label(r.output))
+		bc.hint(player, "craft_auto")
+	end
+	st.fs_dirty = true
+end
+
+core.register_on_craft(function(itemstack, player, old_grid)
+	local st = player and bc.state(player)
+	if not st then return end
+	local r = bc.recipe_for_grid(old_grid, itemstack)
+	if r then practise(player, st, r) end
+end)
+
+-- What a player has to craft with: item name -> count, over pack and grid.
+function bc.craft_pool(player)
+	local inv, pool = player:get_inventory(), {}
+	for _, list in ipairs({"craft", "main"}) do
+		for _, stack in ipairs(inv:get_list(list) or {}) do
+			if not stack:is_empty() then
+				pool[stack:get_name()] = (pool[stack:get_name()] or 0) + stack:get_count()
+			end
+		end
+	end
+	return pool
+end
+
+-- How many of an ingredient are in a pool.
+function bc.pool_count(pool, ingredient)
+	if not is_group(ingredient) then return pool[ingredient] or 0 end
+	local total = 0
+	for name, count in pairs(pool) do
+		if fits(ingredient, name) then total = total + count end
+	end
+	return total
+end
+
+-- Take one of an ingredient out of a pool; returns the item taken. For a
+-- group that is the humblest member (a sharp stone before the flint knife),
+-- then whichever there is most of.
+local function take_from_pool(pool, ingredient)
+	local best
+	if not is_group(ingredient) then
+		best = (pool[ingredient] or 0) > 0 and ingredient or nil
+	else
+		local group, best_rating, best_count = ingredient:sub(7)
+		for name, count in pairs(pool) do
+			local rating = count > 0 and core.get_item_group(name, group) or 0
+			if rating > 0 and (not best or rating < best_rating
+					or (rating == best_rating and (count > best_count or (count == best_count and name < best)))) then
+				best, best_rating, best_count = name, rating, count
+			end
+		end
+	end
+	if best then pool[best] = pool[best] - 1 end
+	return best
+end
+
+local gather
+
+-- Make one of a missing ingredient from a recipe that is second nature,
+-- adding the crafts needed to `steps`. Returns the item made, or nil.
+local function make(st, pool, ingredient, steps, busy)
+	for _, r in ipairs(bc.recipes) do
+		local out = ItemStack(r.output)
+		if not busy[r.id] and fits(ingredient, out:get_name()) and bc.recipe_known(st, r)
+				and bc.times_crafted(st, r) >= bc.CRAFT_AUTO then
+			local trial, trial_steps = table.copy(pool), {}
+			busy[r.id] = true
+			local items, missing = gather(st, trial, r, trial_steps, busy)
+			busy[r.id] = nil
+			if #missing == 0 then
+				for name in pairs(pool) do pool[name] = nil end
+				for name, count in pairs(trial) do pool[name] = count end
+				for _, step in ipairs(trial_steps) do steps[#steps + 1] = step end
+				steps[#steps + 1] = {recipe = r, items = items}
+				local function back(name, count) pool[name] = (pool[name] or 0) + count end
+				for _, name in ipairs(items) do
+					if keeps(name) then back(name, 1) end
+				end
+				for _, pair in ipairs(r.replacements or {}) do back(pair[2], 1) end
+				back(out:get_name(), out:get_count() - 1)
+				return out:get_name()
+			end
+		end
+	end
+end
+
+-- Claim everything recipe `r` needs from `pool`: first what is to hand,
+-- then what can be made. Returns the item chosen for each ingredient and
+-- the ingredients that could not be had.
+function gather(st, pool, r, steps, busy)
+	local items, missing = {}, {}
+	for pass = 1, 2 do
+		for i, ingredient in ipairs(r.items) do
+			if is_group(ingredient) == (pass == 2) then items[i] = take_from_pool(pool, ingredient) end
+		end
+	end
+	for i, ingredient in ipairs(r.items) do
+		if not items[i] then
+			items[i] = make(st, pool, ingredient, steps, busy)
+			if not items[i] then missing[#missing + 1] = ingredient end
+		end
+	end
+	return items, missing
+end
+
+-- Work out how to lay recipe `r` out from a pool (which is left untouched).
+-- Returns {items = one item name per grid slot, steps = crafts to do first},
+-- or nil and the list of ingredients the player is short of.
+function bc.plan_craft(st, pool, r)
+	local steps = {}
+	local items, missing = gather(st, table.copy(pool), r, steps, {[r.id] = true})
+	if #missing > 0 then return nil, missing end
+	return {items = items, steps = steps}
+end
+
+-- "2 x Stick, 1 x Cordage" for a list of item or ingredient names.
+function bc.count_labels(names)
+	local order, counts = {}, {}
+	for _, name in ipairs(names) do
+		if not counts[name] then order[#order + 1] = name end
+		counts[name] = (counts[name] or 0) + 1
+	end
+	local parts = {}
+	for i, name in ipairs(order) do parts[i] = counts[name] .. " x " .. bc.item_label(name) end
+	return table.concat(parts, ", ")
+end
+
+local function take_one(lists, name)
+	for _, list in ipairs(lists) do
+		for _, stack in ipairs(list) do
+			if not stack:is_empty() and stack:get_name() == name then return stack:take_item(1) end
+		end
+	end
+end
+
+local function put(list, stack)
+	stack = ItemStack(stack)
+	for pass = 1, 2 do   -- top up existing stacks before using an empty slot
+		for _, slot in ipairs(list) do
+			if slot:is_empty() == (pass == 2) then
+				stack = slot:add_item(stack)
+				if stack:is_empty() then return true end
+			end
+		end
+	end
+	return false
+end
+
+-- Lay recipe `r` out in the player's craft grid, first making whatever is
+-- missing from recipes that are second nature. Everything is worked out on
+-- copies of the pack and grid, so nothing changes unless all of it fits.
+-- Returns true and the items made along the way, or false and why not.
+function bc.lay_out(player, st, r)
+	if bc.times_crafted(st, r) < bc.CRAFT_LAYOUT then
+		return false, "Make it once by hand first."
+	end
+	local plan, missing = bc.plan_craft(st, bc.craft_pool(player), r)
+	if not plan then return false, "You are short of " .. bc.count_labels(missing) .. "." end
+	local inv = player:get_inventory()
+	local main, grid, spare = inv:get_list("main"), inv:get_list("craft"), {}
+	local from = {grid, spare, main}
+	local made = {}
+
+	for _, step in ipairs(plan.steps) do
+		local input = {}
+		for i = 1, 9 do
+			input[i] = step.items[i] and take_one(from, step.items[i]) or ItemStack("")
+		end
+		local out, left = core.get_craft_result({method = "normal", width = 3, items = input})
+		if out.item:get_name() ~= ItemStack(step.recipe.output):get_name() then
+			return false, "That did not come together."
+		end
+		spare[#spare + 1] = out.item
+		for _ = 1, out.item:get_count() do made[#made + 1] = out.item:get_name() end
+		for i, stack in ipairs(left.items) do
+			if keeps(input[i]:get_name()) then   -- a tool comes back, a little worn
+				stack = input[i]
+				stack:add_wear(bc.CRAFT_WEAR)
+			end
+			if not stack:is_empty() then spare[#spare + 1] = stack end
+		end
+		for _, stack in ipairs(out.replacements or {}) do spare[#spare + 1] = stack end
+	end
+
+	local laid = {}
+	for i, name in ipairs(plan.items) do laid[i] = take_one(from, name) end
+	for _, list in ipairs({grid, spare}) do
+		for _, stack in ipairs(list) do
+			if not stack:is_empty() and not put(main, stack) then
+				return false, "Your pack is too full to make room for that."
+			end
+		end
+	end
+	for i = 1, #grid do grid[i] = laid[i] or ItemStack("") end
+	inv:set_list("main", main)
+	inv:set_list("craft", grid)
+	for _, step in ipairs(plan.steps) do
+		practise(player, st, step.recipe)
+		bc.exert(player, bc.CRAFT_EFFORT[1], bc.CRAFT_EFFORT[2])
+	end
+	return true, made
 end
