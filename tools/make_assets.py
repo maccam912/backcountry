@@ -1113,7 +1113,8 @@ class Model:
             self.vn.append(normal)
             uv = self.uv(faces.get(name, cell))
             n = len(self.vn)
-            self.f.append([(base + k + 1, uv[k], n) for k in range(4)])
+            # Wind the face outward, keeping each vertex paired with its UV.
+            self.f.append([(base + k + 1, uv[k], n) for k in (0, 3, 2, 1)])
 
     def transform(self, fn):
         self.v = [fn(*p) for p in self.v]
@@ -1276,7 +1277,7 @@ def models():
     atlas("player", cells, {4: face})
     player().write("player")
     lying = player()
-    # rotate onto the back: head towards +z, face up, resting just above the bed
+    # Swapping Y and Z lays the player face up and reverses the winding.
     lying.transform(lambda x, y, z, is_normal=False: (x, z, y) if is_normal else (x, z + 0.12, y - 0.85))
     for face_ in lying.f:
         face_.reverse()
