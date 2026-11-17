@@ -77,7 +77,7 @@ food("fish_cooked", "Cooked Fish", 0.3, {kcal = 350, water = 1, cooked = true},
 	{_bc_spoil = {rate = 0.3, into = "bc:meat_spoiled"}})
 food("fish_dried", "Dried Fish", 0.15, {kcal = 300, water = -3, cooked = true})
 food("fat", "Fat", 0.4, {kcal = 380, water = 0, risk = {aff = "nausea", chance = 0.3, msg = "Raw fat sits heavily."}},
-	{_bc_spoil = {rate = 0.2, into = "bc:meat_spoiled"}, groups = {bc_fuel = 1}, _bc_fuel = 0.5})
+	{_bc_spoil = {rate = 0.2, into = "bc:meat_spoiled"}, groups = {bc_fuel = 1}, _bc_fuel = 0.9})
 
 food("berries_blue", "Blueberries", 0.03, {kcal = 40, water = 2}, {_bc_spoil = {rate = 0.3}})
 food("berries_red", "Raspberries", 0.03, {kcal = 35, water = 2}, {_bc_spoil = {rate = 0.4}})

@@ -14,19 +14,19 @@ end
 -- ---------------------------------------------------------------------
 -- Materials
 -- ---------------------------------------------------------------------
-item("stick", "Stick", 0.3, {groups = {stick = 1, bc_fuel = 1}, _bc_fuel = 0.2})
+item("stick", "Stick", 0.3, {groups = {stick = 1, bc_fuel = 1}, _bc_fuel = 0.35})
 item("rock", "Rock\nLeft-click to throw.", 1.2, {
 	on_use = function(stack, user) return bc.hunt.throw(stack, user, {damage = 2, speed = 20, drop = 1}) end,
 })
 item("flint", "Flint", 0.3)
 item("pyrite", "Pyrite Nodule", 0.3)
 item("grass", "Green Grass", 0.05, {groups = {bc_thatch = 1}})
-item("dry_grass", "Dry Grass", 0.03, {groups = {bc_thatch = 1, bc_tinder = 1, bc_fuel = 1}, _bc_tinder = "grass", _bc_fuel = 0.04})
+item("dry_grass", "Dry Grass", 0.03, {groups = {bc_thatch = 1, bc_tinder = 1, bc_fuel = 1}, _bc_tinder = "grass", _bc_fuel = 0.07})
 item("cordage", "Cordage", 0.05)
-item("bark", "Birch Bark", 0.1, {groups = {bc_tinder = 3, bc_fuel = 1}, _bc_tinder = "bark", _bc_fuel = 0.08})
+item("bark", "Birch Bark", 0.1, {groups = {bc_tinder = 3, bc_fuel = 1}, _bc_tinder = "bark", _bc_fuel = 0.14})
 item("lichen", "Beard Lichen", 0.02, {groups = {bc_tinder = 2}, _bc_tinder = "lichen"})
 item("clay_lump", "Clay", 0.8)
-item("charcoal", "Charcoal", 0.1, {groups = {bc_fuel = 1}, _bc_fuel = 1.0,
+item("charcoal", "Charcoal", 0.1, {groups = {bc_fuel = 1}, _bc_fuel = 1.75,
 	on_use = function(stack, user) return bc.eat(stack, user) end,
 	_bc_food = {kcal = 0, water = -1, verb = "choke down", cure = {food_poisoning = 0.4, nausea = 0}, note = "charcoal"},
 })
@@ -183,12 +183,14 @@ end)
 
 -- Tools used as part of a recipe (a knife, say) come back a little worn
 -- instead of being consumed. Crafting itself takes a little effort.
+bc.CRAFT_WEAR = 65535 / 60
+bc.CRAFT_EFFORT = {3, 0.05}   -- kcal, rest
 core.register_on_craft(function(_, player, old_grid, craft_inv)
 	for i, stack in ipairs(old_grid) do
 		if core.get_item_group(stack:get_name(), "bc_keep") > 0 then
-			stack:add_wear(65535 / 60)
+			stack:add_wear(bc.CRAFT_WEAR)
 			craft_inv:set_stack("craft", i, stack)
 		end
 	end
-	if player then bc.exert(player, 3, 0.05) end
+	if player then bc.exert(player, bc.CRAFT_EFFORT[1], bc.CRAFT_EFFORT[2]) end
 end)

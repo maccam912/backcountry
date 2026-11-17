@@ -10,7 +10,7 @@ core.register_node("bc:thatch", {
 	is_ground_content = false,
 	groups = {snappy = 2, oddly_breakable_by_hand = 2, flammable = 3, bc_insul = 3},
 	sounds = S.leaves,
-	_bc_weight = 1.5, _bc_effort = {3, 0.08}, _bc_fuel = 0.1,
+	_bc_weight = 1.5, _bc_effort = {3, 0.08}, _bc_fuel = 0.18,
 })
 
 core.register_node("bc:wattle", {
@@ -19,7 +19,7 @@ core.register_node("bc:wattle", {
 	is_ground_content = false,
 	groups = {choppy = 3, oddly_breakable_by_hand = 2, flammable = 2, bc_insul = 1},
 	sounds = S.wood,
-	_bc_weight = 2, _bc_effort = {3, 0.08}, _bc_fuel = 0.4,
+	_bc_weight = 2, _bc_effort = {3, 0.08}, _bc_fuel = 0.7,
 })
 
 core.register_node("bc:daub", {

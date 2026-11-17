@@ -4,6 +4,7 @@ bc.modpath = core.get_modpath("bc")
 bc.storage = core.get_mod_storage()
 bc.players = {}   -- name -> state table (see bc.load_player)
 bc.year_len = tonumber(core.settings:get("bc_year_length")) or 40
+bc.sim.ENERGY_USE = bc.sim.clamp(tonumber(core.settings:get("bc_energy_use")) or 1, 0.25, 3)
 
 function bc.time_speed()
 	local ts = tonumber(core.settings:get("time_speed")) or 72
@@ -81,6 +82,7 @@ function bc.load_player(player)
 	p.hints = p.hints or {}      -- tips already shown
 	p.obj = p.obj or {}          -- completed objectives
 	p.fire_skill = p.fire_skill or 0
+	p.crafted = p.crafted or {}  -- recipe id -> times made
 	p.born = p.born or bc.clock
 	p.deaths = p.deaths or 0
 	p.best = p.best or 0
@@ -151,7 +153,7 @@ function bc.exert(player, kcal, rest)
 	local st = bc.state(player)
 	if not st then return end
 	local v = st.v
-	v.kcal = math.max(0, v.kcal - (kcal or 0))
+	v.kcal = math.max(0, v.kcal - (kcal or 0) * bc.sim.ENERGY_USE)
 	v.rest = math.max(0, v.rest - (rest or 0))
 end
 

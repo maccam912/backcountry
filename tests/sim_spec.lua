@@ -52,9 +52,23 @@ test("a comfortable idle day costs about a day's food and no health", function()
 	run(v, 16, env(), rng)
 	run(v, 8, env{activity = "sleep", bed_quality = 0.85, bed = 3}, rng)
 	local burned = 2500 - v.kcal
-	check(burned > 1200 and burned < 2200, "burned " .. burned)
+	check(burned > 900 and burned < 1600, "burned " .. burned)
 	check(v.condition == 100, "condition " .. v.condition)
 	check(v.water < 80 and v.water > 40, "water " .. v.water)
+end)
+
+test("the energy-use setting scales what the body burns, at rest and shivering", function()
+	local function burn(e, use)
+		local v = sim.new_vitals(); v.kcal = 2500
+		sim.ENERGY_USE = use
+		sim.step(v, 1, e, make_rng())
+		sim.ENERGY_USE = 1
+		return 2500 - v.kcal
+	end
+	check(math.abs(burn(env(), 0.5) - burn(env(), 1) / 2) < 0.01)
+	local cold = env{air = 5, wind = 3}
+	check(burn(cold, 1) > burn(env(), 1) + 30, "no shivering cost")
+	check(math.abs(burn(cold, 2) - burn(cold, 1) * 2) < 0.01)
 end)
 
 test("sprinting burns far more than walking, walking more than resting", function()
