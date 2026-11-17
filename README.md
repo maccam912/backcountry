@@ -64,7 +64,12 @@ Open the inventory for the journal:
 - **Field Guide** – the basics of water, fire, shelter, food, hunting,
   medicine and weather.
 - **Crafting** – the recipes you know. More appear as you handle new
-  materials.
+  materials. Anything you have made once by hand can be laid out in the craft
+  grid from here (double-click it, or press the button) when you carry the
+  materials; those recipes show in green. Make a thing five times and it is
+  second nature: if another recipe needs it and you only carry the raw
+  materials, it is made on the way. Ask for a bow with no cordage and enough
+  grass, and the cordage is twisted first.
 - **Notes** – a suggested order of goals (the next one is always on screen),
   and discoveries.
 
@@ -84,7 +89,9 @@ commands for testing (`/bc info`, `/bc weather storm`, `/bc day 25`, ...).
 
 `bc_year_length` (days per year, default 40), `bc_hints` (tips on/off),
 `bc_wildlife` (animal density multiplier), `bc_fahrenheit` (Fahrenheit by
-default). Each player can also switch between Celsius and Fahrenheit with the
+default), `bc_energy_use` (how fast calories burn; below 1 makes food last
+longer), `bc_fuel_life` (how long fuel burns; above 1 makes a fire last
+longer). Each player can also switch between Celsius and Fahrenheit with the
 button in the journal's Notes tab.
 
 ## Where a world starts
@@ -107,7 +114,7 @@ tools/         asset generators and the engine test runner
 ## Tests
 
 ```
-luajit tests/sim_spec.lua                     # 27 rule tests, no engine needed
+luajit tests/sim_spec.lua                     # 28 rule tests, no engine needed
 python3 tools/run_engine_tests.py             # loads the game in the real engine, checks world and systems
 python3 tools/run_engine_tests.py --client    # also joins with a real client and exercises every player path
 python3 tools/run_engine_tests.py --show 70   # stages a camp scene to look at

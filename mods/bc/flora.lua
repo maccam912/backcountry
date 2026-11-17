@@ -60,7 +60,7 @@ local function register_tree(id, def)
 		sounds = S.wood,
 		on_place = core.rotate_node,
 		_bc_weight = 9,
-		_bc_fuel = 2.0,
+		_bc_fuel = 3.5,
 	})
 	local drops = {{items = {sapling}, rarity = 25}}
 	for _, extra in ipairs(def.leaf_drops or {}) do drops[#drops + 1] = extra end
@@ -83,7 +83,7 @@ local function register_tree(id, def)
 			core.swap_node(pos, node)
 		end,
 		_bc_weight = 0.4,
-		_bc_fuel = 0.1,
+		_bc_fuel = 0.18,
 		_bc_effort = {1, 0.03},
 	})
 	core.register_node(sapling, {
