@@ -10,9 +10,12 @@ bc.cooking = {
 	["bc:pot_unfired"] = {out = "bc:pot", time = 1.5},
 }
 
+-- Game hours one of an item burns for: its _bc_fuel, stretched or cut short
+-- by the bc_fuel_life setting.
+local FUEL_LIFE = sim.clamp(tonumber(core.settings:get("bc_fuel_life")) or 1, 0.25, 4)
 local function fuel_hours(name)
 	local def = core.registered_items[name]
-	return def and def._bc_fuel or 0
+	return (def and def._bc_fuel or 0) * FUEL_LIFE
 end
 bc.fuel_hours = fuel_hours
 
@@ -201,7 +204,7 @@ local function ignite(pos)
 	if meta:get_int("used") == 1 or meta:get_float("burn") <= 0 then
 		local hours = take_fuel(inv)
 		if meta:get_int("used") == 1 and hours <= 0 then return false end
-		meta:set_float("burn", hours > 0 and hours or 0.35)
+		meta:set_float("burn", hours > 0 and hours or 0.6 * FUEL_LIFE)   -- the lay itself
 	end
 	meta:set_int("used", 1)
 	meta:set_float("last", bc.clock)

@@ -19,6 +19,7 @@ local function hyper(x, y, w, h, name, text)
 end
 local function col(color, text) return "<style color=" .. color .. ">" .. text .. "</style>" end
 local GOOD, WARN, BAD, DIM = "#9fd08a", "#f0b040", "#ff6a55", "#a8a698"
+local MAKE = "#c8b070"   -- something that will be made on the way
 
 -- ---------------------------------------------------------------------
 -- Goals: a suggested order of business for someone new to the woods
@@ -123,6 +124,8 @@ local HINTS = {
 	butcher = "Right-click the carcass with a knife or sharp stone in hand to butcher it, one cut at a time.",
 	fishing = "Watch the float. When it dips you get a moment to use the pole again and set the hook. Dawn and dusk fish best.",
 	dark = "It is very dark. A torch (stick and birch bark) lit at a fire gives light you can carry.",
+	craft_layout = "Now that you have made that once, your hands know it. Double-click it in the journal's Crafting tab (or press Lay it out) and the materials are set out in the craft grid for you.",
+	craft_auto = "Anything you have made five times is second nature. When another recipe needs it and you only have the raw materials, it is made for you on the way.",
 }
 
 function bc.hint(player, key)
@@ -183,6 +186,8 @@ You have the clothes you stand in and nothing else. In rough order, you need:
 <b>4. Fire.</b> A fire lay (3 sticks), a bow drill (3 sticks, cordage) and tinder in your pack. Punch the lay with the drill until it catches.
 <b>5. A bed, then walls.</b> A bough bed (4 leaves, 2 sticks) lets you sleep. A small sealed shelter round it keeps you warm.
 <b>6. Food.</b> You can go days without it, but you weaken. Forage first; fish, trap and hunt when you have tools.
+
+Hands learn. Anything you have made once can be laid out in the craft grid from the <b>Crafting</b> tab: double-click it there. Make a thing five times and it is second nature, made for you on the way whenever another recipe needs it.
 
 The <b>Notes</b> tab tracks these as goals. The <b>Condition</b> tab tells you what your body needs right now.]]},
 	{"Reading your body", [[
@@ -489,12 +494,19 @@ local function build_recipe_list(st)
 	return list
 end
 
-local function crafting_tab(st)
+local function crafting_tab(player, st)
 	local list = build_recipe_list(st)
 	st.recipe_list = list
+	local pool = bc.craft_pool(player)
 	local rows = {}
 	for i, e in ipairs(list) do
-		rows[i] = e.header and ("#c8b070" .. core.formspec_escape("- " .. e.header .. " -")) or core.formspec_escape("   " .. e.label)
+		if e.header then
+			rows[i] = "#c8b070" .. core.formspec_escape("- " .. e.header .. " -")
+		else
+			-- green: practised, and the materials are there to lay it out now
+			local ready = e.recipe and bc.times_crafted(st, e.recipe) >= bc.CRAFT_LAYOUT and bc.plan_craft(st, pool, e.recipe)
+			rows[i] = (ready and GOOD or "") .. core.formspec_escape("   " .. e.label)
+		end
 	end
 	local sel = st.sel_recipe or 2
 	if not list[sel] or list[sel].header then sel = 2 end
@@ -514,14 +526,48 @@ local function crafting_tab(st)
 			if not counts[item] then order[#order + 1] = item end
 			counts[item] = (counts[item] or 0) + 1
 		end
+		local made = bc.times_crafted(st, r)
+		local plan, missing = bc.plan_craft(st, pool, r)
 		for i, item in ipairs(order) do
 			local y = 2.7 + (i - 1) * 0.95
+			local have = bc.pool_count(pool, item)
+			local color = have >= counts[item] and GOOD or plan and MAKE or WARN
 			fs = fs .. "item_image[" .. x .. "," .. y .. ";0.8,0.8;" .. (GROUP_ICON[item] or item) .. "]"
-				.. "label[" .. (x + 1.1) .. "," .. (y + 0.4) .. ";" .. core.formspec_escape(counts[item] .. " x " .. bc.item_label(item)) .. "]"
+				.. "label[" .. (x + 1.1) .. "," .. (y + 0.4) .. ";" .. core.formspec_escape(counts[item] .. " x " .. bc.item_label(item))
+				.. core.colorize(color, core.formspec_escape("   (you have " .. have .. ")")) .. "]"
 		end
 		local y = 2.9 + #order * 0.95
-		fs = fs .. hyper(x, y, W - x - 0.4, H - y - 0.4, "rnote",
-			hesc(r.note or "") .. "\n\n" .. col(DIM, "Arrange these anywhere in the craft grid on the Pack tab. A knife used in crafting is kept, a little more worn."))
+		local t = {hesc(r.note or ""), ""}
+		if made < bc.CRAFT_LAYOUT then
+			t[#t + 1] = col(DIM, "Arrange these anywhere in the craft grid on the Pack tab. A knife used in crafting is kept, a little more worn.")
+			t[#t + 1] = col(DIM, "Once you have made this by hand, it can be laid out for you from here.")
+		else
+			if made >= bc.CRAFT_AUTO then
+				t[#t + 1] = col(GOOD, "Second nature.") .. " It is made for you on the way whenever another recipe needs it and you carry the materials."
+			else
+				t[#t + 1] = string.format("Made %d of the %d times it takes to become second nature. After that it is made for you on the way whenever another recipe needs it.", made, bc.CRAFT_AUTO)
+			end
+			if plan then
+				local first = {}
+				for _, step in ipairs(plan.steps) do
+					local out = ItemStack(step.recipe.output)
+					for _ = 1, out:get_count() do first[#first + 1] = out:get_name() end
+				end
+				if #first > 0 then
+					t[#t + 1] = col(MAKE, "You will first make " .. hesc(bc.count_labels(first)) .. " from what you carry.")
+				end
+			else
+				t[#t + 1] = col(WARN, "You are short of " .. hesc(bc.count_labels(missing)) .. ".")
+			end
+			if st.craft_note then t[#t + 1] = col(BAD, hesc(st.craft_note)) end
+		end
+		local bottom = H - 0.4
+		if made >= bc.CRAFT_LAYOUT and plan then
+			bottom = H - 1.4
+			fs = fs .. "button[" .. x .. "," .. (H - 1.2) .. ";4.6,0.8;lay_out;Lay it out in the craft grid]"
+				.. "tooltip[lay_out;Or double-click the recipe in the list.]"
+		end
+		fs = fs .. hyper(x, y, W - x - 0.4, bottom - y, "rnote", table.concat(t, "\n"))
 	else
 		local p = e.process
 		fs = fs .. "item_image[" .. x .. ",0.5;1.3,1.3;" .. p.out .. "]"
@@ -594,7 +640,7 @@ local function pack_tab(player, st)
 		.. "label[9.15,2.75;=]"
 		.. "list[current_player;craftpreview;9.7,2.15;1,1]"
 		.. "label[5.2,5.0;" .. core.formspec_escape(string.format("Pack %.1f kg  (comfortable to %d kg)", st.load or 0, sim.CARRY_COMFORT)) .. "]"
-		.. "label[5.2,5.55;" .. core.formspec_escape("Recipes you know are in the Crafting tab.") .. "]"
+		.. "label[5.2,5.55;" .. core.formspec_escape(st.pack_note or "Recipes you know are in the Crafting tab.") .. "]"
 		.. "list[current_player;main;1.875,6.6;8,3]"
 		.. "listring[current_player;main]listring[current_player;craft]"
 		.. "listring[current_player;main]listring[current_player;clothing]"
@@ -610,7 +656,7 @@ local function build(player, st)
 	elseif tab == 2 then
 		fs = fs .. hyper(0.4, 0.4, W - 0.8, H - 0.8, "cond", condition_text(player, st))
 	elseif tab == 3 then
-		fs = fs .. crafting_tab(st)
+		fs = fs .. crafting_tab(player, st)
 	elseif tab == 4 then
 		local rows = {}
 		for i, g in ipairs(GUIDE) do rows[i] = core.formspec_escape(g[1]) end
@@ -637,17 +683,40 @@ function bc.journal.refresh(player, st)
 	st.fs_dirty = false
 end
 
+-- Lay the selected recipe out in the craft grid and turn to the Pack tab,
+-- where the grid is. If it cannot be done the Crafting tab says why.
+local function lay_out_selected(player, st)
+	local e = st.recipe_list and st.recipe_list[st.sel_recipe or 2]
+	if not e or not e.recipe then return end
+	local ok, result = bc.lay_out(player, st, e.recipe)
+	if not ok then
+		st.craft_note = result
+		return
+	end
+	st.pack_note = "Laid out: " .. e.label .. "."
+	if #result > 0 then
+		st.pack_note = "Made " .. bc.count_labels(result) .. ", then laid out: " .. e.label .. "."
+	end
+	st.tab = 1
+	bc.sound("bc_page", player, 0.4)
+end
+
 core.register_on_player_receive_fields(function(player, formname, fields)
 	if formname == "bc:death" or formname == "bc:welcome" then return true end
 	if formname ~= "" then return end
 	local st = bc.state(player)
 	if not st then return end
+	st.craft_note = nil
 	if fields.tabs then
 		st.tab = tonumber(fields.tabs) or 1
+		st.pack_note = nil
 		bc.sound("bc_page", player, 0.4)
 	elseif fields.recipes then
 		local ev = core.explode_textlist_event(fields.recipes)
 		if ev.type == "CHG" or ev.type == "DCL" then st.sel_recipe = ev.index end
+		if ev.type == "DCL" then lay_out_selected(player, st) end
+	elseif fields.lay_out then
+		lay_out_selected(player, st)
 	elseif fields.topics then
 		local ev = core.explode_textlist_event(fields.topics)
 		if ev.type == "CHG" or ev.type == "DCL" then st.sel_topic = sim.clamp(ev.index, 1, #GUIDE) end

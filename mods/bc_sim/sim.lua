@@ -9,6 +9,7 @@ sim.COMFORT_LOW = 16     -- felt temperature below which the body must work to s
 sim.COMFORT_HIGH = 29    -- felt temperature above which the body must sweat
 sim.CARRY_COMFORT = 20   -- kg carried before it starts to cost you
 sim.CARRY_MAX = 55       -- kg at which you can barely move
+sim.ENERGY_USE = 1       -- multiplier on every calorie burned (the bc_energy_use setting)
 
 local function clamp(x, lo, hi)
 	if x < lo then return lo end
@@ -19,11 +20,11 @@ sim.clamp = clamp
 
 -- kcal burned, water lost (% of full), rest change, body heat produced
 sim.ACTIVITY = {
-	sleep  = {kcal = 50,  water = 1.0, rest = 12.5, heat = -1},
-	rest   = {kcal = 70,  water = 1.6, rest = -4.5, heat = 0},
-	walk   = {kcal = 170, water = 2.4, rest = -6.0, heat = 3},
-	sprint = {kcal = 460, water = 4.6, rest = -15,  heat = 7},
-	swim   = {kcal = 400, water = 2.0, rest = -11,  heat = 1},
+	sleep  = {kcal = 38,  water = 1.0, rest = 12.5, heat = -1},
+	rest   = {kcal = 52,  water = 1.6, rest = -4.5, heat = 0},
+	walk   = {kcal = 128, water = 2.4, rest = -6.0, heat = 3},
+	sprint = {kcal = 345, water = 4.6, rest = -15,  heat = 7},
+	swim   = {kcal = 300, water = 2.0, rest = -11,  heat = 1},
 }
 
 -- cond/water/kcal/rest are per-hour effects while the affliction lasts.
@@ -151,7 +152,7 @@ local function step_once(v, h, e, rng, events)
 	-- temperature -----------------------------------------------------
 	local felt, parts = sim.felt_temperature(e, v)
 	info.felt, info.parts = felt, parts
-	local kcal_rate = -act.kcal * load_mult + a_kcal
+	local kcal_rate = -act.kcal * load_mult * sim.ENERGY_USE + a_kcal
 	local water_rate = -act.water + a_water
 	local core_rate = 0
 	local target = 37 + fever
@@ -161,7 +162,7 @@ local function step_once(v, h, e, rng, events)
 		local deficit = sim.COMFORT_LOW - felt
 		local cap = v.kcal > 0 and 6 or 2      -- shivering needs fuel
 		local comp = math.min(deficit, cap)
-		kcal_rate = kcal_rate - comp * 16
+		kcal_rate = kcal_rate - comp * 12 * sim.ENERGY_USE
 		cold_stress = deficit - comp
 		info.deficit = deficit
 		info.flags.shivering = comp > 1.5

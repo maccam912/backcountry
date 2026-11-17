@@ -125,6 +125,9 @@ local function static_checks()
 		local out = core.get_craft_result({method = "normal", width = 3, items = grid})
 		check(out.item:to_string() == ItemStack(r.output):to_string(),
 			r.id .. ": grid gives '" .. out.item:to_string() .. "', expected '" .. r.output .. "'")
+		local stacks = {}
+		for i, item in ipairs(grid) do stacks[i] = ItemStack(item) end
+		check(bc.recipe_for_grid(stacks, out.item) == r, r.id .. ": not recognised from its own grid")
 		for _, u in ipairs(r.unlock or {}) do
 			check(core.registered_items[u], r.id .. ": unlock item unknown " .. u)
 		end
@@ -510,6 +513,103 @@ local function player_checks(player)
 		check(inv:get_stack("craft", 2):get_name() == "bc:sharp_stone" and inv:get_stack("craft", 2):get_wear() > 0,
 			"knife not returned worn after crafting")
 		inv:set_list("craft", {})
+
+		-- practice: made once, a recipe can be laid out; made five times it is made on the way
+		local saved_main, saved_crafted = inv:get_list("main"), st.p.crafted
+		local hatchet, cordage = bc.recipe_by_id.hatchet, bc.recipe_by_id.cordage
+		local function have(list, item) return inv:contains_item(list, item, true) end
+		local function count(name)
+			local n = 0
+			for _, stack in ipairs(inv:get_list("main")) do
+				if stack:get_name() == name then n = n + stack:get_count() end
+			end
+			return n
+		end
+		local function by_hand(r, times)
+			for _ = 1, times do
+				local hand = {}
+				for i, item in ipairs(r.items) do hand[i] = ItemStack(item) end
+				for _, cb in ipairs(core.registered_on_crafts) do cb(ItemStack(r.output), player, hand, inv) end
+			end
+		end
+		local function grid_makes()
+			return core.get_craft_result({method = "normal", width = 3, items = inv:get_list("craft")}).item:get_name()
+		end
+		st.p.crafted = {}
+		inv:set_list("main", {})
+		inv:add_item("main", "bc:rock 2")
+		inv:add_item("main", "bc:stick 3")
+		inv:add_item("main", "bc:grass 7")
+		check(not bc.lay_out(player, st, hatchet), "a recipe never made by hand was laid out")
+		by_hand(hatchet, 1)
+		check(st.p.crafted.hatchet == 1, "a craft by hand was not counted")
+		local ok, why = bc.lay_out(player, st, hatchet)
+		check(not ok and why:find("1 x Cordage", 1, true), "missing cordage not reported: " .. tostring(why))
+		by_hand(cordage, 4)
+		check(not bc.plan_craft(st, bc.craft_pool(player), hatchet), "cordage made on the way before it was second nature")
+		check(count("bc:grass") == 7 and inv:is_empty("craft"), "a refused lay-out changed the pack")
+		by_hand(cordage, 1)
+		local made
+		ok, made = bc.lay_out(player, st, hatchet)
+		check(ok and #made == 1 and made[1] == "bc:cordage", "cordage not made on the way: " .. dump(made))
+		check(grid_makes() == "bc:hatchet", "laid-out grid gives '" .. grid_makes() .. "'")
+		check(count("bc:grass") == 4 and count("bc:rock") == 1 and count("bc:stick") == 2 and count("bc:cordage") == 0,
+			"materials not taken correctly: " .. dump(bc.craft_pool(player)))
+		check(st.p.crafted.cordage == 6, "a craft made on the way was not counted")
+		ok, made = bc.lay_out(player, st, hatchet)
+		check(ok and #made == 0 and count("bc:grass") == 4 and count("bc:stick") == 2 and grid_makes() == "bc:hatchet",
+			"laying the same recipe out again was not a no-op")
+
+		-- two things made on the way, one of them with a knife that must come back
+		st.p.crafted.fishing_rod, st.p.crafted.hook_wood = 1, 5
+		inv:set_list("craft", {})
+		inv:add_item("main", "bc:sharp_stone")
+		ok, made = bc.lay_out(player, st, bc.recipe_by_id.fishing_rod)
+		check(ok and #made == 2, "rod: " .. dump(made))
+		check(grid_makes() == "bc:fishing_rod", "rod grid gives '" .. grid_makes() .. "'")
+		check(count("bc:stick") == 0 and count("bc:grass") == 1 and count("bc:rock") == 1, "rod materials: " .. dump(bc.craft_pool(player)))
+		local _, knife = bc.find_group(player, "bc_knife")
+		check(knife and knife:get_wear() > 0, "knife not returned worn from a craft made on the way")
+
+		-- the journal's own button, and the green list rows
+		inv:set_list("craft", {})
+		inv:set_list("main", {})
+		inv:add_item("main", "bc:rock")
+		inv:add_item("main", "bc:stick")
+		inv:add_item("main", "bc:grass 3")
+		st.tab = 3
+		bc.journal.refresh(player, st)
+		for i, e in ipairs(st.recipe_list) do
+			if e.recipe == hatchet then st.sel_recipe = i end
+		end
+		bc.journal.refresh(player, st)
+		local fs = player:get_inventory_formspec()
+		check(fs:find("button[", 1, true) and fs:find("lay_out", 1, true), "no lay-out button for a practised recipe")
+		check(fs:find("You will first make 1 x Cordage", 1, true), "journal does not say what will be made first")
+		for _, cb in ipairs(core.registered_on_player_receive_fields) do cb(player, "", {lay_out = "x"}) end
+		check(st.tab == 1 and grid_makes() == "bc:hatchet" and inv:is_empty("main"), "button did not lay the hatchet out")
+		check(player:get_inventory_formspec():find("Made 1 x Cordage", 1, true), "pack tab does not say what was made")
+
+		-- a pack too full for what is left over: nothing at all changes
+		inv:set_list("craft", {"bc:flint"})
+		inv:set_list("main", {})
+		inv:add_item("main", "bc:rock 2")
+		inv:add_item("main", "bc:stick 2")
+		inv:add_item("main", "bc:grass 4")
+		for _ = 1, 21 do inv:add_item("main", "bc:digging_stick") end
+		local practised = st.p.crafted.cordage
+		ok, why = bc.lay_out(player, st, hatchet)
+		check(not ok and why:find("too full", 1, true), "full pack: " .. tostring(why))
+		check(count("bc:grass") == 4 and count("bc:rock") == 2 and count("bc:stick") == 2 and have("craft", "bc:flint")
+			and st.p.crafted.cordage == practised, "a lay-out that did not fit still changed things")
+		-- ...but it is no obstacle when the grid only holds what the recipe uses
+		inv:set_list("craft", {"bc:stick"})
+		ok = bc.lay_out(player, st, hatchet)
+		check(ok and grid_makes() == "bc:hatchet" and count("bc:stick") == 2, "full pack with a useful grid was refused")
+
+		inv:set_list("craft", {})
+		inv:set_list("main", saved_main)
+		st.p.crafted = saved_crafted
 
 		-- operator commands
 		local cmd = core.registered_chatcommands.bc.func
