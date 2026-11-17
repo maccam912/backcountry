@@ -5,12 +5,24 @@ bc.CLOTHING_SLOTS = {"Head", "Body", "Legs", "Hands", "Feet", "Cape"}
 local function garment(name, desc, slot, warmth, weight, rain)
 	core.register_craftitem("bc:" .. name, {
 		description = desc .. "\n" .. bc.CLOTHING_SLOTS[slot] .. " - warmth +" .. warmth .. "°C (+" .. math.floor(warmth * 1.8 + 0.5) .. "°F)"
-			.. (rain and "\nSheds rain" or ""),
+			.. (rain and "\nSheds rain" or "") .. "\nUse to wear or swap.",
 		inventory_image = "bc_" .. name .. ".png",
 		stack_max = 1,
 		groups = {bc_clothing = slot},
 		_bc_cloth = {slot = slot, warmth = warmth, rain = rain or 0},
 		_bc_weight = weight,
+		on_use = function(stack, player)
+			local st = bc.state(player)
+			if not st then return stack end
+			local inv = player:get_inventory()
+			local previous = inv:get_stack("clothing", slot)
+			inv:set_stack("clothing", slot, stack)
+			if not st.p.items[stack:get_name()] then bc.journal.discover(player, st, stack:get_name()) end
+			st.fs_dirty = true
+			bc.sound("bc_cloth", player, 0.5)
+			bc.toast(player, "You put on the " .. desc:lower() .. ".")
+			return previous
+		end,
 	})
 end
 

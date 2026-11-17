@@ -198,6 +198,7 @@ scatter("bc:branch", {"taiga", "forest", "snowy_taiga"}, 0.03, {param2 = 0, para
 scatter("bc:branch", {"grassland", "scrubland", "tundra"}, 0.003, {param2 = 0, param2_max = 3})
 scatter("bc:branch", {"desert"}, 0.0015, {place_on = {"bc:sand"}, param2 = 0, param2_max = 3})
 scatter("bc:branch", nil, 0.012, {place_on = {"bc:sand", "bc:gravel"}, y_min = 1, y_max = 2, param2 = 0, param2_max = 3})
+scatter("bc:nurse_log", {"forest", "taiga", "snowy_taiga"}, 0.003, {param2 = 0, param2_max = 3})
 
 -- ---------------------------------------------------------------------
 -- Where a group starts: the nearest liveable country to the origin, so

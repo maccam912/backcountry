@@ -232,7 +232,7 @@ local function brain(self, def, pos)
 		else
 			self.yaw, self.speed = toward, 0
 		end
-		bc.learn(player, "fire_wolves")
+		if def.name == "wolf" then bc.learn(player, "fire_wolves") end
 	elseif bold then
 		self.state = "chase"
 		self.yaw = toward
@@ -268,6 +268,14 @@ local function on_step(self, dtime, moveresult)
 		return
 	end
 	local def = self.def
+	self.print_timer = (self.print_timer or math.random()) - dtime
+	if self.print_timer <= 0 then
+		self.print_timer = 0.6 + math.random() * 0.2
+		if self.print_sample and moveresult and moveresult.touching_ground then
+			bc.leave_print(self, self.print_sample, pos)
+		end
+		self.print_sample = vector.new(pos)
+	end
 
 	self.think = (self.think or 0) - dtime
 	if self.think <= 0 then
@@ -526,8 +534,12 @@ core.register_globalstep(function(dtime)
 					r = r - entry[2]
 					if r <= 0 then
 						local def = bc.animals[entry[1]]
-						for _ = 1, math.random(def.group[1], def.group[2]) do
-							bc.spawn_animal(entry[1], {x = spot.x + math.random(-2, 2), y = spot.y + 0.5, z = spot.z + math.random(-2, 2)})
+						local count = math.min(math.random(def.group[1], def.group[2]),
+							def.max - (by[def.name] or 0), math.ceil(7 * DENSITY) - total)
+						for i = 1, count do
+							local place = i == 1 and spot or ground_at(spot.x + math.random(-2, 2),
+								spot.z + math.random(-2, 2), math.floor(spot.y))
+							if place then bc.spawn_animal(def.name, place) end
 						end
 						break
 					end

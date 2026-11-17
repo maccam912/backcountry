@@ -47,7 +47,8 @@ conf.write_text(
     f"fixed_map_seed = {a.seed}\nmg_name = {a.mapgen}\nbind_address = 127.0.0.1\nport = {a.port}\n"
     f"server_announce = false\nenable_damage = true\ntime_speed = 48\nbc_probe_player = {'true' if a.client else 'false'}\n"
     "default_privs = interact,shout\n" + (f"bc_probe_old_spawn = {a.old_spawn}\n" if a.old_spawn else ""))
-env = dict(os.environ, MINETEST_GAME_PATH=str(games), LUANTI_GAME_PATH=str(games))
+env = dict(os.environ, MINETEST_GAME_PATH=str(games), LUANTI_GAME_PATH=str(games),
+           MINETEST_USER_PATH=str(tmp), LUANTI_USER_PATH=str(tmp))
 log = tmp / "server.log"
 server = subprocess.Popen([a.engine, "--server", "--world", str(world), "--config", str(conf), "--logfile", str(log)],
                           stdout=open(tmp / "server.out", "w"), stderr=subprocess.STDOUT, env=env)
@@ -57,7 +58,7 @@ if a.client:
     cconf = tmp / "client.conf"
     cconf.write_text(("screen_w = 2560\nscreen_h = 1600\n" if a.show else "screen_w = 1280\nscreen_h = 800\n") + "fullscreen = false\nwindow_maximized = false\nmute_sound = true\n"
                      "enable_sound = false\nviewing_range = 80\nmenu_last_game = backcountry\n"
-                     + ("video_driver = null\n" if a.headless else ""))
+                     + ("video_driver = null\nenable_post_processing = false\n" if a.headless else ""))
     client = subprocess.Popen([a.engine, "--go", "--address", "127.0.0.1", "--port", a.port, "--name", "probe",
                                "--password", "probe", "--config", str(cconf), "--logfile", str(tmp / "client.log")],
                               stdout=open(tmp / "client.out", "w"), stderr=subprocess.STDOUT, env=env)

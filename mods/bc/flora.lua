@@ -255,21 +255,88 @@ plant("onion_plant", {
 })
 
 -- Berry bushes fruit, are picked clean, and fruit again in the warm months.
+-- Keep a game-clock deadline so nights passed asleep count toward regrowth.
+local function fruit_in(pos, hours)
+	core.get_meta(pos):set_float("fruit_after", bc.clock + hours)
+	core.get_node_timer(pos):start(bc.real_seconds(2))
+end
+
 local function bush(color, desc, berries)
 	local empty, ripe = "bc:bush_" .. color, "bc:bush_" .. color .. "_ripe"
-	local function regrow_time() return bc.real_seconds(40 + math.random() * 40) end
+	local cutting = empty .. "_cutting"
+	local function regrow_time() return 40 + math.random() * 40 end
+	plant("bush_" .. color .. "_cutting", {
+		description = desc .. " Cutting\nPlant in sunlit soil. It takes a day to root in mild weather.",
+		height = -0.12,
+		on_place = function(stack, player, pt)
+			if pt.type ~= "node" then return stack end
+			local under = core.registered_nodes[core.get_node(pt.under).name]
+			if under and under.on_rightclick and not player:get_player_control().sneak then
+				return core.item_place(stack, player, pt)
+			end
+			local at = under and under.buildable_to and pt.under or pt.above
+			if core.get_item_group(core.get_node(vector.offset(at, 0, -1, 0)).name, "soil") == 0 then
+				bc.toast(player, "The cutting needs a patch of soil.")
+				return stack
+			end
+			return core.item_place(stack, player, pt)
+		end,
+		on_construct = function(pos)
+			core.get_meta(pos):set_float("root_after", bc.clock + 24)
+			core.get_node_timer(pos):start(bc.real_seconds(1))
+		end,
+		on_timer = function(pos)
+			if bc.clock < core.get_meta(pos):get_float("root_after")
+					or core.get_item_group(core.get_node(vector.offset(pos, 0, -1, 0)).name, "soil") == 0
+					or (core.get_natural_light(pos, 0.5) or 0) < 10
+					or bc.climate.air(pos, {seasonal_only = true}) < 6 then return true end
+			core.set_node(pos, {name = empty})
+			return false
+		end,
+	})
 	plant("bush_" .. color, {
-		description = desc .. " Bush",
+		description = desc .. " Bush\nUse a knife on a picked bush to take a cutting.",
 		texture = "bc_bush.png",
 		height = 0.4,
 		waving = 0,
 		visual_scale = 1.2,
 		drop = "bc:stick",
-		on_construct = function(pos) core.get_node_timer(pos):start(regrow_time()) end,
+		on_construct = function(pos) fruit_in(pos, regrow_time()) end,
+		on_rightclick = function(pos, _, player, stack)
+			if not player or not player:is_player() then return stack end
+			if core.get_item_group(stack:get_name(), "bc_knife") == 0 then
+				bc.toast(player, "The berries are gone. A knife could take a cutting.")
+				return stack
+			end
+			local name = player:get_player_name()
+			if core.is_protected(pos, name) then
+				core.record_protection_violation(pos, name)
+				return stack
+			end
+			local meta = core.get_meta(pos)
+			if meta:get_int("pruned") == 1 then
+				bc.toast(player, "The tips have already been trimmed. Let the bush grow back.")
+				return stack
+			end
+			meta:set_int("pruned", 1)
+			local remaining = meta:get_float("fruit_after") - bc.clock
+			if meta:get_string("fruit_after") == "" then
+				-- Old bushes stored their remaining wait only in a node timer.
+				local timer = core.get_node_timer(pos)
+				remaining = (timer:get_timeout() - timer:get_elapsed()) / bc.real_seconds(1)
+			end
+			fruit_in(pos, math.max(0, remaining) + 18)
+			-- Commit the tool use first so a last cut can free a pack slot.
+			stack:add_wear(bc.CRAFT_WEAR)
+			player:set_wielded_item(stack)
+			bc.give(player, cutting)
+			bc.learn(player, "berry_cuttings")
+			return player:get_wielded_item()
+		end,
 		on_timer = function(pos)
-			-- bushes only set fruit when the season is mild
+			if bc.clock < core.get_meta(pos):get_float("fruit_after") then return true end
 			if bc.climate and bc.climate.air(pos, {seasonal_only = true}) < 6 then
-				core.get_node_timer(pos):start(regrow_time())
+				fruit_in(pos, 6)
 				return false
 			end
 			core.swap_node(pos, {name = ripe})
@@ -278,14 +345,22 @@ local function bush(color, desc, berries)
 	})
 	local function pick(pos, _, player)
 		if not player or not player:is_player() then return end
+		if core.get_node(pos).name ~= ripe then return end
+		local name = player:get_player_name()
+		if core.is_protected(pos, name) then
+			core.record_protection_violation(pos, name)
+			return
+		end
 		core.swap_node(pos, {name = empty})
-		core.get_node_timer(pos):start(regrow_time())
+		core.get_meta(pos):set_int("pruned", 0)
+		fruit_in(pos, regrow_time())
 		bc.give(player, berries .. " " .. math.random(3, 5))
 		bc.sound("bc_dig_leaves", pos, 0.5)
 		bc.objective(player, "forage")
+		return player:get_wielded_item()
 	end
 	plant("bush_" .. color .. "_ripe", {
-		description = desc .. " Bush (ripe)",
+		description = desc .. " Bush (ripe)\nPick the berries and the bush will bear again.",
 		texture = "bc_bush_" .. color .. ".png",
 		height = 0.4,
 		waving = 0,
@@ -307,8 +382,9 @@ plant("cactus", {
 	visual_scale = 1.2,
 	drop = "",
 	groups = {snappy = 2},
-	on_construct = function(pos) core.get_node_timer(pos):start(bc.real_seconds(60 + math.random() * 60)) end,
+	on_construct = function(pos) fruit_in(pos, 60 + math.random() * 60) end,
 	on_timer = function(pos)
+		if bc.clock < core.get_meta(pos):get_float("fruit_after") then return true end
 		core.swap_node(pos, {name = "bc:cactus_ripe"})
 		return false
 	end,
@@ -316,10 +392,17 @@ plant("cactus", {
 do
 	local function pick(pos, _, player)
 		if not player or not player:is_player() then return end
+		if core.get_node(pos).name ~= "bc:cactus_ripe" then return end
+		local name = player:get_player_name()
+		if core.is_protected(pos, name) then
+			core.record_protection_violation(pos, name)
+			return
+		end
 		core.swap_node(pos, {name = "bc:cactus"})
-		core.get_node_timer(pos):start(bc.real_seconds(60 + math.random() * 60))
+		fruit_in(pos, 60 + math.random() * 60)
 		bc.give(player, "bc:cactus_fruit " .. math.random(2, 3))
 		bc.objective(player, "forage")
+		return player:get_wielded_item()
 	end
 	plant("cactus_ripe", {
 		description = "Prickly Pear (in fruit)",
@@ -332,6 +415,19 @@ do
 		on_punch = pick,
 	})
 end
+
+-- Decorations placed by mapgen skip on_construct. Start fruiting on the
+-- unripe cacti in new chunks and in deserts explored by older saves.
+core.register_lbm({
+	label = "Start wild prickly pear fruiting",
+	name = "bc:cactus_fruit_timer",
+	nodenames = {"bc:cactus"},
+	run_at_every_load = true,
+	action = function(pos)
+		local timer = core.get_node_timer(pos)
+		if not timer:is_started() then fruit_in(pos, 60 + math.random() * 60) end
+	end,
+})
 
 -- Grass creeps back over bare-topped soil.
 core.register_abm({

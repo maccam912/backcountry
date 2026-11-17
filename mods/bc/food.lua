@@ -10,7 +10,8 @@ function bc.eat(stack, user)
 	if not st or not f then return stack end
 	local v = st.v
 	if st.sleeping then return stack end
-	if (f.kcal or 0) > 0 and (f.water or 0) <= 2 and v.kcal >= sim.MAX_KCAL - 30 then
+	if (f.kcal or 0) > 0 and v.kcal >= sim.MAX_KCAL - 30
+			and ((f.water or 0) <= 2 or v.water >= 99.5) then
 		bc.toast(user, "You cannot eat another bite.")
 		return stack
 	end
@@ -37,7 +38,7 @@ function bc.eat(stack, user)
 		if f.risk.note then bc.learn(user, f.risk.note) end
 	end
 	bc.sound((f.water or 0) > 5 and (f.kcal or 0) < 60 and "bc_drink" or "bc_eat", user, 0.6)
-	if (f.kcal or 0) >= 150 then bc.objective(user, f.cooked and "cook" or "eat") end
+	if f.cooked then bc.objective(user, "cook") end
 	if f.safe_water then bc.objective(user, "water") end
 	stack:take_item()
 	if f.returns then
@@ -79,16 +80,24 @@ food("fish_dried", "Dried Fish", 0.15, {kcal = 300, water = -3, cooked = true})
 food("fat", "Fat", 0.4, {kcal = 380, water = 0, risk = {aff = "nausea", chance = 0.3, msg = "Raw fat sits heavily."}},
 	{_bc_spoil = {rate = 0.2, into = "bc:meat_spoiled"}, groups = {bc_fuel = 1}, _bc_fuel = 0.9})
 
-food("berries_blue", "Blueberries", 0.03, {kcal = 40, water = 2}, {_bc_spoil = {rate = 0.3}})
-food("berries_red", "Raspberries", 0.03, {kcal = 35, water = 2}, {_bc_spoil = {rate = 0.4}})
+food("berries_blue", "Blueberries", 0.03, {kcal = 40, water = 2}, {_bc_spoil = {rate = 0.3}, groups = {bc_berry = 1}})
+food("berries_red", "Raspberries", 0.03, {kcal = 35, water = 2}, {_bc_spoil = {rate = 0.4}, groups = {bc_berry = 1}})
 food("cactus_fruit", "Prickly Pear Fruit", 0.1, {kcal = 45, water = 7}, {_bc_spoil = {rate = 0.2}})
 food("onion", "Wild Onion", 0.05, {kcal = 30, water = 1})
 food("cattail_root", "Cattail Root", 0.2, {kcal = 60, water = 1})
-food("cattail_root_roasted", "Roasted Cattail Root", 0.15, {kcal = 130, water = 0})
+food("cattail_root_roasted", "Roasted Cattail Root", 0.15, {kcal = 130, water = 0, cooked = true})
 food("acorn", "Acorn", 0.02, {kcal = 30, water = -1,
 	risk = {aff = "nausea", chance = 0.5, note = "acorn", msg = "Bitter as bark. Your mouth puckers and your stomach complains."}})
 food("acorn_mash", "Leached Acorn Mash", 0.3, {kcal = 260, water = 2, note = "acorn_mash"})
 food("snowball", "Snow", 0.3, {kcal = 0, water = 5, core = -0.12, note = "snow", verb = "eat"})
+
+core.register_craftitem("bc:berry_dough", {
+	description = "Berry and Acorn Dough\nBake on a campfire.",
+	inventory_image = "bc_berry_dough.png", _bc_weight = 0.36,
+	_bc_spoil = {rate = 0.4},
+})
+food("berry_griddlecake", "Berry Griddlecake\nKeeps well on the trail.", 0.2,
+	{kcal = 335, water = -1, cooked = true}, {_bc_spoil = {rate = 0.035}})
 
 -- ---------------------------------------------------------------------
 -- Mushrooms. Which caps are wholesome differs from world to world, so no
@@ -235,6 +244,13 @@ end
 
 -- Waterskin: carries one good drink.
 local function fill_skin(stack, user, pt)
+	if pt and pt.type == "node" then
+		local node = core.get_node(pt.under)
+		local def = core.registered_nodes[node.name]
+		if def and def.on_rightclick then
+			return core.item_place(stack, user, pt)
+		end
+	end
 	if pointed_water(pt) then
 		bc.sound("bc_drink", user, 0.4)
 		return ItemStack("bc:waterskin_raw")
@@ -242,7 +258,7 @@ local function fill_skin(stack, user, pt)
 	return stack
 end
 core.register_craftitem("bc:waterskin", {
-	description = "Waterskin (empty)\nRight-click water to fill.",
+	description = "Waterskin (empty)\nRight-click water or a placed pot of water to fill.",
 	inventory_image = "bc_waterskin.png",
 	stack_max = 1,
 	liquids_pointable = true,
@@ -260,8 +276,13 @@ food("waterskin_clean", "Waterskin (clean water)", 1.3,
 
 -- Clay pot: boil water in it at a fire.
 local pot_box = {type = "fixed", fixed = {
-	{-0.28, -0.5, -0.28, 0.28, 0.0, 0.28},
-	{-0.22, 0.0, -0.22, 0.22, 0.08, 0.22},
+	{-0.18, -0.5, -0.18, 0.18, -0.42, 0.18},
+	{-0.26, -0.42, -0.26, 0.26, -0.35, 0.26},
+	{-0.30, -0.35, -0.30, 0.30, -0.10, 0.30},
+	{-0.25, -0.10, -0.25, 0.25, -0.02, 0.25},
+	{-0.28, -0.02, -0.28, 0.28, 0.045, 0.28},
+	{-0.39, -0.15, -0.07, -0.27, -0.08, 0.07},
+	{0.27, -0.15, -0.07, 0.39, -0.08, 0.07},
 }}
 local function pot(name, desc, top, extra)
 	local def = {
@@ -278,13 +299,55 @@ local function pot(name, desc, top, extra)
 		_bc_weight = 1.5,
 	}
 	for k, v in pairs(extra or {}) do def[k] = v end
+	if def._bc_spoil then
+		def.on_construct = function(pos)
+			core.get_meta(pos):set_float("food_last", bc.clock)
+			core.get_node_timer(pos):start(30)
+		end
+		def.on_timer = function(pos)
+			local meta = core.get_meta(pos)
+			local hours = math.max(0, bc.clock - meta:get_float("food_last"))
+			meta:set_float("food_last", bc.clock)
+			local chance = sim.spoil_chance(def._bc_spoil.rate, bc.climate.air(pos), hours)
+			if math.random() < chance then
+				core.set_node(pos, {name = def._bc_spoil.into})
+				core.get_meta(pos):set_string("infotext", "Empty clay pot • The food spoiled")
+				return false
+			end
+			return true
+		end
+	end
 	core.register_node("bc:" .. name, def)
 end
 
 pot("pot_unfired", "Unfired Clay Pot\nBake it in a fire before use.", "bc_pot_top.png",
 	{tiles = {"bc_pot_unfired.png"}, _bc_weight = 2.4})
-pot("pot", "Clay Pot\nRight-click water to fill.", "bc_pot_top.png", {
+local function start_collecting(pos)
+	local meta = core.get_meta(pos)
+	meta:set_float("rain_last", bc.clock)
+	meta:set_string("infotext", "Empty clay pot • Collects rain under open sky")
+	core.get_node_timer(pos):start(20)
+end
+
+pot("pot", "Clay Pot\nRight-click water to fill, or leave it out in the rain.", "bc_pot_top.png", {
 	liquids_pointable = true,
+	on_construct = start_collecting,
+	on_timer = function(pos)
+		local meta = core.get_meta(pos)
+		local dt = sim.clamp(bc.clock - meta:get_float("rain_last"), 0, 1)
+		meta:set_float("rain_last", bc.clock)
+		local amount, kind = bc.rained_on(pos)
+		if kind == "rain" then
+			local fill = meta:get_float("rain_fill") + dt * amount / 2
+			if fill >= 1 then
+				core.set_node(pos, {name = "bc:pot_rainwater"})
+				return false
+			end
+			meta:set_float("rain_fill", fill)
+			meta:set_string("infotext", ("Rainwater • %d%% full"):format(math.floor(fill * 100)))
+		end
+		return true
+	end,
 	on_place = function(stack, user, pt)
 		if pt.type == "node" and core.get_item_group(core.get_node(pt.under).name, "bc_water") > 0 then
 			bc.sound("bc_drink", user, 0.4)
@@ -294,38 +357,71 @@ pot("pot", "Clay Pot\nRight-click water to fill.", "bc_pot_top.png", {
 	end,
 })
 
-local function pot_drink(f)
+-- Pots placed before rain collection existed have no node timer.
+core.register_lbm({
+	label = "Set out old clay pots to catch rain",
+	name = "bc:rainwater_pots",
+	nodenames = {"bc:pot"},
+	action = function(pos)
+		if not core.get_node_timer(pos):is_started() then start_collecting(pos) end
+	end,
+})
+
+local function filled_pot(f, skin)
 	return {
 		_bc_food = f,
+		groups = {oddly_breakable_by_hand = 3, attached_node = 1, bc_pot_water = skin and 1 or nil},
 		on_use = bc.eat,
-		on_rightclick = function(pos, _, clicker)
+		on_rightclick = function(pos, node, clicker, held)
 			local st = bc.state(clicker)
-			if not st then return end
-			if st.v.water >= 99.5 then
-				bc.toast(clicker, "You are not thirsty.")
-				return
+			if not st or st.sleeping then return held end
+			if core.is_protected(pos, clicker:get_player_name()) then return held end
+			if skin and held and held:get_name() == "bc:waterskin" then
+				core.set_node(pos, {name = "bc:pot"})
+				bc.sound("bc_drink", clicker, 0.4)
+				if node.name == "bc:pot_rainwater" then bc.learn(clicker, "rainwater") end
+				bc.toast(clicker, skin == "bc:waterskin_clean" and "You fill your skin with clean water."
+					or "You fill your skin with untreated water.")
+				return ItemStack(skin)
 			end
-			st.v.water = sim.clamp(st.v.water + f.water, 0, 100)
-			bc.sound("bc_drink", clicker, 0.6)
-			if f.risk and math.random() < f.risk.chance then
-				sim.add_affliction(st.v, f.risk.aff)
-				bc.learn(clicker, "bad_water")
-				bc.toast(clicker, f.risk.msg)
+			local leftover = bc.eat(ItemStack(node.name), clicker)
+			if leftover:get_name() ~= node.name then
+				core.set_node(pos, {name = leftover:get_name()})
 			end
-			if f.safe_water then
-				bc.objective(clicker, "water")
-				bc.learn(clicker, "boiled")
-			end
-			core.swap_node(pos, {name = "bc:pot"})
+			return held
 		end,
 		_bc_weight = 3.0,
 	}
 end
 pot("pot_water_raw", "Pot of Untreated Water\nBoil it at a fire to make it safe.", "bc_pot_water.png",
-	pot_drink({kcal = 0, water = 45, returns = "bc:pot",
-		risk = {aff = "dysentery", chance = 0.12, note = "bad_water", msg = "Your guts are cramping. That water was not clean."}}))
+	filled_pot({kcal = 0, water = 45, returns = "bc:pot",
+		risk = {aff = "dysentery", chance = 0.12, note = "bad_water", msg = "Your guts are cramping. That water was not clean."}}, "bc:waterskin_raw"))
 pot("pot_water_boiled", "Pot of Boiled Water\nSafe to drink.", "bc_pot_water.png",
-	pot_drink({kcal = 0, water = 45, returns = "bc:pot", safe_water = true, note = "boiled"}))
+	filled_pot({kcal = 0, water = 45, returns = "bc:pot", safe_water = true, note = "boiled"}, "bc:waterskin_clean"))
+pot("pot_rainwater", "Fresh Rainwater\nDrink or fill a waterskin.", "bc_pot_rainwater.png",
+	filled_pot({kcal = 0, water = 45, returns = "bc:pot", safe_water = true, note = "rainwater"}, "bc:waterskin_clean"))
+
+-- A pot makes two portions. Placed at camp, anyone can serve themselves.
+local function meal(id, label, kcal, water)
+	local name = "pot_" .. id
+	pot(name .. "_raw", label .. " Ingredients\nSimmer on a campfire for two portions.", "bc_" .. name .. "_raw.png", {
+		_bc_weight = 3.5, _bc_spoil = {rate = 0.65, into = "bc:pot"},
+		inventory_image = "bc_" .. name .. "_raw_icon.png",
+	})
+	for servings = 1, 2 do
+		local next_pot = servings == 1 and "bc:pot" or "bc:" .. name .. "_last"
+		local def = filled_pot({kcal = kcal, water = water, cooked = true, returns = next_pot,
+			note = "camp_supper"})
+		def._bc_weight = servings == 1 and 2.3 or 3.2
+		def._bc_spoil = {rate = 0.22, into = "bc:pot"}
+		local portion = servings == 1 and "Last portion" or "Two portions"
+		local variant = name .. (servings == 1 and "_last" or "")
+		def.inventory_image = "bc_" .. variant .. "_icon.png"
+		pot(variant, label .. "\n" .. portion .. ". Use to eat or set down to share.", "bc_" .. variant .. ".png", def)
+	end
+end
+meal("stew", "Wild Onion Stew", 305, 17)
+meal("chowder", "Cattail Fish Chowder", 280, 16)
 
 -- ---------------------------------------------------------------------
 -- Spoilage. Each perishable has a chance to go off as time passes: fast

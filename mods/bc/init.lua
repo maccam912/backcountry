@@ -14,12 +14,15 @@ for _, file in ipairs({
 	"crafting",  -- recipes and what each player knows
 	"climate",   -- weather, temperature, shelter analysis
 	"fire",      -- campfires, cooking, torches
+	"trail",     -- bearings to camp and the last lost pack
 	"build",     -- shelter parts, beds, storage, racks
+	"campcraft", -- field tools and camp utilities
 	"hud",
 	"vitals",    -- the per-player survival loop, sleep, death
 	"animals",
 	"hunting",   -- projectiles, snares, fishing
 	"journal",   -- inventory screen, field guide, tips
+	"ecology",   -- signs of wildlife and woodland discoveries
 	"commands",
 }) do
 	dofile(path .. "/" .. file .. ".lua")

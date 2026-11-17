@@ -21,8 +21,8 @@ sim.clamp = clamp
 -- kcal burned, water lost (% of full), rest change, body heat produced
 sim.ACTIVITY = {
 	sleep  = {kcal = 38,  water = 1.0, rest = 12.5, heat = -1},
-	rest   = {kcal = 52,  water = 1.6, rest = -4.5, heat = 0},
-	walk   = {kcal = 128, water = 2.4, rest = -6.0, heat = 3},
+	rest   = {kcal = 52,  water = 1.6, rest = -4.0, heat = 0},
+	walk   = {kcal = 128, water = 2.4, rest = -5.5, heat = 3},
 	sprint = {kcal = 345, water = 4.6, rest = -15,  heat = 7},
 	swim   = {kcal = 300, water = 2.0, rest = -11,  heat = 1},
 }
@@ -291,6 +291,9 @@ function sim.step(v, dt, e, rng)
 		if e.activity == "sleep" then
 			if v.core < 35.2 then
 				events[#events + 1] = {type = "wake", reason = "cold"}
+				break
+			elseif v.core > 38.8 then
+				events[#events + 1] = {type = "wake", reason = "hot"}
 				break
 			elseif v.rest >= 100 then
 				events[#events + 1] = {type = "wake", reason = "rested"}

@@ -17,7 +17,12 @@ local function finish()
 end
 local function guarded(name, fn)
 	local ok, err = xpcall(fn, debug.traceback)
-	if not ok then fail(name .. ": " .. tostring(err)) end
+	if not ok then
+		local message = name .. ": " .. tostring(err)
+		fail(message)
+		core.log("error", message)
+		finish()
+	end
 end
 
 local wait_player = core.settings:get_bool("bc_probe_player", false)
@@ -209,6 +214,8 @@ local function world_checks()
 	local hut = bc.climate.analyze(c)
 	check(hut.enclosed and hut.volume == 2 and hut.insulation > 0.9 and hut.roof and hut.wind_block == 1,
 		"sealed hut not recognised: " .. dump(hut))
+	check(hut.interior[core.hash_node_position(c)] and not hut.interior[core.hash_node_position(vector.offset(c, 1, 0, 0))],
+		"shelter contents include a wall or omit the sleeper")
 	core.set_node({x = c.x + 1, y = c.y, z = c.z}, {name = "bc:door_open"})
 	check(not bc.climate.analyze(c).enclosed, "hut with an open door still counts as sealed")
 	core.set_node({x = c.x + 1, y = c.y, z = c.z}, {name = "bc:door"})
@@ -259,6 +266,13 @@ local function world_checks()
 	local rmeta = core.get_meta(rp)
 	rmeta:get_inventory():set_stack("main", 1, "bc:meat_raw")
 	core.registered_nodes["bc:rack"].on_metadata_inventory_put(rp, "main", 1)
+	check(core.registered_nodes["bc:rack"].allow_metadata_inventory_put(rp, "main", 1, ItemStack("bc:meat_raw")) == 0,
+		"rack accepted two cuts on a single line")
+	bc.clock = bc.clock + 1
+	rmeta:get_inventory():set_stack("main", 2, "bc:grass")
+	core.registered_nodes["bc:rack"].on_metadata_inventory_put(rp, "main", 2)
+	core.registered_nodes["bc:rack"].on_timer(rp)
+	check(rmeta:get_float("p1") > 0 and rmeta:get_float("p2") == 0, "freshly hung food reset the other line")
 	for _ = 1, 8 do
 		bc.clock = bc.clock + 3
 		core.registered_nodes["bc:rack"].on_timer(rp)
@@ -443,12 +457,22 @@ local function player_checks(player)
 			core.set_node({x = p.x, y = p.y + 1, z = p.z}, {name = "air"})
 		end
 		ground(q)
+		core.set_node(q, {name = "bc:wattle"})
+		local clay = ItemStack("bc:clay_lump 2")
+		inv:add_item("main", "bc:grass")
+		clay = clay:get_definition().on_place(clay, player, {type = "node", under = q, above = vector.offset(q, 0, 1, 0)})
+		check(core.get_node(q).name == "bc:daub" and clay:get_count() == 1, "did not daub the wall in place")
 		core.set_node(q, {name = "bc:door"})
 		core.registered_nodes["bc:door"].on_rightclick(q, core.get_node(q), player, ItemStack(""))
 		check(core.get_node(q).name == "bc:door_open", "door did not open")
 		core.set_node(q, {name = "bc:cairn"})
 		core.registered_nodes["bc:cairn"].after_place_node(q, player)
 		check(st.p.home and st.p.home.x == q.x, "cairn did not mark camp")
+		local at_camp = bc.trail.camp_spawn(st)
+		check(at_camp and vector.distance(at_camp, q) < 3, "no safe standing place at the cairn")
+		st.p.bearing = "camp"
+		check(bc.trail.reading(st, vector.offset(q, 0, 0, -13)):find("north  13 m", 1, true), "camp bearing points away")
+		st.p.bearing = nil
 		core.set_node(q, {name = "bc:snare_caught"})
 		core.registered_nodes["bc:snare_caught"].on_rightclick(q, core.get_node(q), player)
 		check(inv:contains_item("main", "bc:rabbit_dead"), "snare gave no rabbit")
@@ -507,6 +531,12 @@ local function player_checks(player)
 		check(allow(player, "put", inv, {listname = "clothing", index = 4, stack = ItemStack("bc:fur_hat")}) == 0, "hat allowed on hands")
 		inv:set_stack("clothing", 1, "bc:fur_hat")
 		check(bc.clothing_stats(player) == 8, "clothing warmth wrong: " .. bc.clothing_stats(player))
+		local coat = ItemStack("bc:fur_coat")
+		coat:get_meta():set_string("owner_mark", "birch")
+		local old = coat:get_definition().on_use(coat, player)
+		check(old:get_name() == "bc:shirt" and inv:get_stack("clothing", 2):get_meta():get_string("owner_mark") == "birch",
+			"quick equip lost a garment or its metadata")
+		inv:set_stack("clothing", 2, old)
 		inv:set_list("craft", {})
 		local grid = {ItemStack("bc:stick"), ItemStack("bc:sharp_stone")}
 		for _, cb in ipairs(core.registered_on_crafts) do cb(ItemStack("bc:hook"), player, grid, inv) end
@@ -611,6 +641,11 @@ local function player_checks(player)
 		inv:set_list("main", saved_main)
 		st.p.crafted = saved_crafted
 
+		local probe = core.get_modpath("bc_probe")
+		dofile(probe .. "/camp.lua")(check, player, q)
+		dofile(probe .. "/ecology.lua")(player, check, q)
+		dofile(probe .. "/campcraft.lua")(player, check)
+
 		-- operator commands
 		local cmd = core.registered_chatcommands.bc.func
 		for _, c in ipairs({"info", "set water 50", "weather rain", "wind 3", "afflict sprain", "cure", "weather clear"}) do
@@ -697,6 +732,13 @@ local function player_checks(player)
 			end
 			note("dropped_item_entities", ents)
 			check(remains and not core.get_meta(remains):get_inventory():is_empty("main"), "no remains left behind")
+			check(st.p.lost_pack and vector.equals(st.p.lost_pack, remains), "lost pack was not marked")
+			if remains then
+				st.p.bearing = "pack"
+				core.get_meta(remains):get_inventory():set_list("main", {})
+				bc.trail.check_pack(remains)
+				check(not st.p.lost_pack and not st.p.bearing, "empty pack still has a bearing")
+			end
 			check(st.p.deaths == 1, "death not counted")
 			check(inv:get_stack("clothing", 2):get_name() == "bc:shirt", "not re-dressed after death")
 			note("phase2", "done")

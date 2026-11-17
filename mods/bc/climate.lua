@@ -169,6 +169,8 @@ function bc.climate.analyze(start)
 	if sealed then
 		res.enclosed = true
 		res.volume = #queue
+		res.interior = {}
+		for _, p in ipairs(queue) do res.interior[core.hash_node_position(p)] = true end
 		res.insulation = walls > 0 and wall_sum / walls or 0.5
 		res.wind_block = 1
 		return res
@@ -206,9 +208,8 @@ local function fire_warmth(pos, sh)
 		if heat > 0.02 then
 			local d = vector.distance(eye, fp)
 			local r = heat * 22 / (1 + (d / 2.2) ^ 2)
-			if not bc.clear_line(eye, {x = fp.x, y = fp.y + 0.3, z = fp.z}) then r = r * 0.25 end
-			radiant = radiant + r
-			if sh.enclosed then
+			if bc.clear_line(eye, {x = fp.x, y = fp.y + 0.3, z = fp.z}) then radiant = radiant + r end
+			if sh.interior and sh.interior[core.hash_node_position(fp)] then
 				best_room = math.max(best_room, heat * (10 + 14 * sh.insulation) / (1 + sh.volume / 60))
 			end
 		end
@@ -228,9 +229,10 @@ function bc.climate.sample(player, st)
 	local tod = core.get_timeofday()
 
 	local occupants = 0
-	if sh.enclosed then
+	if sh.interior then
 		for _, other in ipairs(core.get_connected_players()) do
-			if other ~= player and vector.distance(other:get_pos(), pos) < 5 then occupants = occupants + 1 end
+			local body = vector.round(vector.offset(other:get_pos(), 0, 0.6, 0))
+			if other ~= player and sh.interior[core.hash_node_position(body)] then occupants = occupants + 1 end
 		end
 	end
 

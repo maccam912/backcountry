@@ -32,7 +32,7 @@ core.register_entity("bc:projectile", {
 				local ref = pt.ref
 				local e = ref:get_luaentity()
 				local skip = ref == obj or ref == owner or (e and (e.name == "bc:projectile" or e.name == "bc:bobber"
-					or e.name == "__builtin:item")) or (ref:is_player() and not PVP)
+					or e.name == "bc:trail_print" or e.name == "__builtin:item")) or (ref:is_player() and not PVP)
 				if not skip then
 					local vel = obj:get_velocity()
 					ref:punch(owner or obj, 1.0,
@@ -280,15 +280,16 @@ core.register_entity("bc:bobber", {
 			self.bite = self.bite - dtime
 			if self.bite <= 0 then
 				self.bite = nil
-				self.bait = false
+				local baited = self.bait ~= nil
+				self.bait = nil
 				obj:set_pos(self.home)
-				bc.toast(owner, "It got away, and took the bait if there was any.")
+				bc.toast(owner, baited and "It shook free and took the bait." or "It slipped off the bare hook.")
 			end
 			return
 		end
 		if self.t < 3 then return end
 		self.t = 0
-		if math.random() < bite_chance(self.water, self.bait) then
+		if math.random() < bite_chance(self.water, self.bait ~= nil) then
 			self.bite = 2.5
 			obj:set_pos({x = self.home.x, y = self.home.y - 0.25, z = self.home.z})
 			bc.sound("bc_splash", owner, 0.7)
@@ -315,7 +316,8 @@ function bc.hunt.fish(stack, user, pt)
 			bc.exert(user, 4, 0.05)
 			stack:add_wear(65535 / 60)
 		else
-			bc.toast(user, "You pull the line in. Nothing on it.")
+			if bobber.bait then bc.give(user, bobber.bait) end
+			bc.toast(user, bobber.bait and "Nothing yet. You recover the bait." or "You pull the line in. Nothing on it.")
 		end
 		bobber.object:remove()
 		st.fishing = nil
@@ -340,15 +342,28 @@ function bc.hunt.fish(stack, user, pt)
 	e.owner = user:get_player_name()
 	e.home = home
 	e.water = vector.new(pt.under)
-	local i, bait = bc.find_group(user, "bc_bait")
-	if i then
-		bait:take_item()
-		user:get_inventory():set_stack("main", i, bait)
-		e.bait = true
+	-- Prefer worms, then scraps. Save the player's fresh food unless they
+	-- explicitly crouch to use some. Keep metadata on an unused bait.
+	local inv = user:get_inventory()
+	local best, priority
+	for i, s in ipairs(inv:get_list("main")) do
+		if core.get_item_group(s:get_name(), "bc_bait") > 0 then
+			local fresh = core.get_item_group(s:get_name(), "bc_raw_meat") > 0
+			local rank = s:get_name() == "bc:worm" and 1 or (fresh and 3 or 2)
+			if (not fresh or user:get_player_control().sneak) and (not priority or rank < priority) then
+				best, priority = i, rank
+			end
+		end
+	end
+	if best then
+		local bait = inv:get_stack("main", best)
+		e.bait = bait:take_item(1)
+		inv:set_stack("main", best, bait)
 	end
 	st.fishing = e
 	bc.sound("bc_woosh", user, 0.4)
-	bc.toast(user, e.bait and "You bait the hook and cast." or "You cast a bare hook. Bait would help.")
+	bc.toast(user, e.bait and ("You cast with " .. bc.item_label(e.bait:get_name()):lower() .. ".")
+		or "You cast a bare hook. Try worms or scraps, or crouch to use fresh meat.")
 	bc.hint(user, "fishing")
 	return stack
 end

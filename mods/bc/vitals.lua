@@ -69,14 +69,6 @@ function bc.damage(player, amount, cause)
 	if v.condition <= 0 then bc.die(player, cause) end
 end
 
-local function respawn_pos(st)
-	local home = st.p.home
-	if home and core.get_node(home).name == "bc:cairn" then
-		return {x = home.x, y = home.y + 0.5, z = home.z + 1}
-	end
-	return nil
-end
-
 function bc.die(player, cause, by_engine)
 	local st = bc.state(player)
 	if not st or st.dying then return end
@@ -97,20 +89,33 @@ function bc.die(player, cause, by_engine)
 	local days = (bc.clock - st.p.born) / 24
 	local why = CAUSE[cause or ""] or cause or "exposure"
 	if #items > 0 then
-		local spot
+		local spot, submerged
 		for _, off in ipairs({{0, 0}, {1, 0}, {-1, 0}, {0, 1}, {0, -1}}) do
 			for dy = 0, 4 do
 				local p = {x = pos.x + off[1], y = pos.y + dy, z = pos.z + off[2]}
 				local def = core.registered_nodes[core.get_node(p).name]
-				if def and def.buildable_to and def.liquidtype == "none" then spot = p; break end
+				if def and def.buildable_to then
+					if def.liquidtype == "none" then spot = p; break end
+					if not submerged and (def.groups.bc_water or 0) > 0 then submerged = p end
+				end
 			end
 			if spot then break end
 		end
+		spot = spot or submerged
 		if spot then
+			local water = core.get_node(spot)
 			core.set_node(spot, {name = "bc:remains"})
 			local meta = core.get_meta(spot)
+			if core.get_item_group(water.name, "bc_water") > 0 then
+				meta:set_string("water", water.name)
+				meta:set_int("water_level", water.param2)
+			end
 			local rinv = meta:get_inventory()
-			for _, stack in ipairs(items) do rinv:add_item("main", stack) end
+			for _, stack in ipairs(items) do
+				local left = rinv:add_item("main", stack)
+				if not left:is_empty() then core.add_item(spot, left) end
+			end
+			bc.trail.mark_pack(st, spot)
 			meta:set_string("infotext", string.format("Remains of %s\nDied of %s on day %d", name, why, bc.day()))
 		else
 			for _, stack in ipairs(items) do core.add_item(pos, stack) end
@@ -122,13 +127,15 @@ function bc.die(player, cause, by_engine)
 	st.p.v = bc.new_life()
 	st.v = st.p.v
 	st.p.born = bc.clock
+	st.p.saw_winter = nil
 	st.last_clock = nil
+	st.vy = nil
 	bc.dress_new_player(player)
 	core.chat_send_all(core.colorize("#d0a060",
 		string.format("%s died of %s after %.1f days in the backcountry.", name, why, days)))
 
 	if not by_engine then
-		local to = respawn_pos(st)
+		local to = bc.trail.camp_spawn(st)
 		if to then player:set_pos(to) else bc.place_at_spawn(player) end
 	end
 	bc.journal.death_screen(player, st, why, days)
@@ -158,7 +165,7 @@ end)
 
 core.register_on_respawnplayer(function(player)
 	local st = bc.state(player)
-	local to = st and respawn_pos(st)
+	local to = st and bc.trail.camp_spawn(st)
 	if to then
 		player:set_pos(to)
 		return true
@@ -195,6 +202,7 @@ end
 local WAKE = {
 	rested = "You wake rested.",
 	cold = "You wake shivering. It is too cold to sleep like this.",
+	hot = "You wake drenched in sweat. You need a cooler place to sleep.",
 	hurt = "You are jolted awake.",
 	up = "You get up.",
 }
@@ -260,7 +268,7 @@ local function fast_step(player, st, dtime)
 		if core.get_item_group(feet, "liquid") == 0 then
 			local speed = -vy
 			bc.damage(player, (speed - 13) * 6, "fall")
-			if math.random() < 0.6 then
+			if st.vy and math.random() < 0.6 then
 				sim.add_affliction(st.v, "sprain")
 				bc.toast(player, "You land badly and twist your ankle.")
 			end
@@ -303,6 +311,7 @@ local function update(player, st)
 	if st.n % 2 == 1 or not st.clim.air then
 		bc.climate.sample(player, st)
 		scan_pack(player, st)
+		bc.trail.update(st)
 	end
 
 	local vel = player:get_velocity()

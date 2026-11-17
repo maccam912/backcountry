@@ -100,6 +100,21 @@ test("eight hours in a good bed restores rest; a bad bed does not", function()
 end)
 
 print("water and food")
+test("one night on boughs sustains a normal field day, but not a forced march", function()
+	local function day_end(load)
+		local v = sim.new_vitals()
+		v.rest, v.kcal = 95, 2500
+		sim.step(v, 12, env{activity = "walk", load = load}, make_rng())
+		sim.step(v, 4, env(), make_rng())
+		local evening = v.rest
+		sim.step(v, 8, env{activity = "sleep", bed_quality = 0.85, bed = 3}, make_rng())
+		return evening, v.rest
+	end
+	local evening, morning = day_end(10)
+	check(evening > 10 and morning >= 95, "ordinary camp lost rest across a day")
+	local hard_evening, hard_morning = day_end(45)
+	check(hard_evening < 1 and hard_morning < 90, "heavy travel cost no extra rest")
+end)
 test("no water kills in 3 to 7 days at rest", function()
 	local v = sim.new_vitals(); v.water = 100
 	local rng = make_rng()
@@ -183,6 +198,13 @@ test("a cold sleeper wakes before freezing", function()
 end)
 
 print("heat")
+test("a sleeper wakes from dangerous heat before heat stroke", function()
+	local v = sim.new_vitals()
+	v.rest, v.core = 5, 38.5
+	local _, events = sim.step(v, 4, env{activity = "sleep", bed = 8, air = 36, insulation = 12}, make_rng())
+	check(events[#events] and events[#events].reason == "hot")
+	check(v.core < 39.2 and v.rest < 100)
+end)
 test("desert sun drains water fast; without water you overheat", function()
 	local shade, sun = sim.new_vitals(), sim.new_vitals()
 	shade.water, sun.water = 100, 100

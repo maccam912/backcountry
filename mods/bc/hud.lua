@@ -80,7 +80,11 @@ function bc.hud.update(player, st)
 		if frac < 0.2 or (row.key == "core" and (hot or v.core < 35)) then color = "#ff4a3a" end
 		local r = ids.rows[i]
 		change(player, st, r.fill, "text", fill_texture(color))
-		player:hud_change(r.fill, "scale", {x = math.max(0.01, frac * BAR_W), y = BAR_H})
+		local pixels = math.max(0.01, math.floor(frac * BAR_W + 0.5))
+		if r.width ~= pixels then
+			player:hud_change(r.fill, "scale", {x = pixels, y = BAR_H})
+			r.width = pixels
+		end
 		change(player, st, r.text, "text", text)
 	end
 
@@ -94,6 +98,8 @@ function bc.hud.update(player, st)
 	if w.wind >= 1 then wind = wind .. " from the " .. wind_from end
 	local where = string.format("Day %d, %s - %s\nAir %s, feels %s\n%s. %s",
 		bc.day(), (bc.season()), bc.time_name(), bc.temp(st, c.air or 0), bc.temp(st, info.felt or 0), sky, wind)
+	local bearing = bc.trail.reading(st, player:get_pos())
+	if bearing ~= "" then where = where .. "\n" .. bearing end
 	change(player, st, ids.where, "text", where)
 
 	local list = sim.statuses(v, info, st.load)
@@ -104,7 +110,12 @@ function bc.hud.update(player, st)
 		if s.sev > worst then worst = s.sev end
 	end
 	change(player, st, ids.status, "text", table.concat(lines, "\n"))
-	local back_h = 76 + (#lines > 0 and (#lines * 22 + 12) or 0)
+	local status_y = bearing == "" and 88 or 110
+	if st.hud_cache.status_y ~= status_y then
+		st.hud_cache.status_y = status_y
+		player:hud_change(ids.status, "offset", {x = -16, y = status_y})
+	end
+	local back_h = status_y - 12 + (#lines > 0 and (#lines * 22 + 12) or 0)
 	if st.hud_cache.back_h ~= back_h then
 		st.hud_cache.back_h = back_h
 		player:hud_change(ids.back, "scale", {x = 330, y = back_h})

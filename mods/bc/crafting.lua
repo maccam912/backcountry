@@ -13,11 +13,12 @@ bc.recipe_by_id = {}
 local function craft(id, cat, output, items, opts)
 	opts = opts or {}
 	core.register_craft({type = "shapeless", output = output, recipe = items, replacements = opts.replacements})
-	local r = {id = id, cat = cat, output = output, items = items, replacements = opts.replacements,
+	local r = {id = id, cat = cat, output = output, output_name = ItemStack(output):get_name(), items = items, replacements = opts.replacements,
 		unlock = opts.unlock, secret = opts.secret, note = opts.note}
 	bc.recipes[#bc.recipes + 1] = r
 	bc.recipe_by_id[id] = r
 end
+bc.register_recipe = craft
 
 local function n(item, count)
 	local t = {}
@@ -78,7 +79,7 @@ craft("thatch", "Shelter", "bc:thatch 3", n("group:bc_thatch", 4),
 craft("wattle", "Shelter", "bc:wattle 2", n("bc:stick", 6),
 	{note = "Woven sticks. A fast wall, but draughty until it is daubed with clay."})
 craft("daub", "Shelter", "bc:daub", {"bc:wattle", "bc:clay_lump", "bc:grass"},
-	{unlock = {"bc:clay_lump"}, note = "Wattle plastered with clay and grass: a solid, warm wall."})
+	{unlock = {"bc:clay_lump"}, note = "Bind clay with grass for a warm wall. You can also use clay on a standing wattle panel with green grass in your pack."})
 craft("door", "Shelter", "bc:door", {"bc:wattle", "bc:stick", "bc:cordage"},
 	{note = "A hinged panel. Stack two for a doorway. A shelter only holds heat with the door shut."})
 craft("drystone", "Shelter", "bc:drystone", n("bc:rock", 4),
@@ -151,6 +152,9 @@ craft("lichen_dressing", "Medicine", "bc:lichen_dressing", {"bc:lichen", "bc:ban
 	{unlock = {"bc:lichen"}, note = "Beard lichen packed into a bandage. Folk medicine, perhaps."})
 
 function bc.recipe_known(st, r)
+	-- A successful experiment belongs in the book, even if the player has
+	-- never seen the material or field note that normally gives the idea.
+	if (st.p.crafted[r.id] or 0) > 0 then return true end
 	if r.secret then return st.p.notes[r.secret] ~= nil end
 	if r.unlock then
 		for _, name in ipairs(r.unlock) do
@@ -165,7 +169,7 @@ end
 function bc.recipes_unlocked_by(st, item)
 	local out = {}
 	for _, r in ipairs(bc.recipes) do
-		if r.unlock and not r.secret then
+		if r.unlock and not r.secret and (st.p.crafted[r.id] or 0) == 0 then
 			local uses = false
 			for _, name in ipairs(r.unlock) do if name == item then uses = true end end
 			if uses and bc.recipe_known(st, r) then out[#out + 1] = r end
@@ -177,7 +181,8 @@ end
 function bc.item_label(name)
 	if name:sub(1, 6) == "group:" then
 		local g = name:sub(7)
-		return ({bc_knife = "Any knife", bc_thatch = "Grass or leaves", leaves = "Any leaves"})[g] or g
+		return ({bc_knife = "Any knife", bc_thatch = "Grass or leaves", leaves = "Any leaves",
+			bc_pot_water = "Pot of water", bc_berry = "Any berries"})[g] or g
 	end
 	local def = core.registered_items[ItemStack(name):get_name()]
 	local desc = def and def.description or name
@@ -215,7 +220,7 @@ function bc.recipe_for_grid(grid, output)
 	end
 	local out_name = ItemStack(output):get_name()
 	for _, r in ipairs(bc.recipes) do
-		if #r.items == #names and ItemStack(r.output):get_name() == out_name then
+		if #r.items == #names and r.output_name == out_name then
 			local left, ok = table.copy(names), true
 			for pass = 1, 2 do   -- named ingredients claim theirs before "any knife" ones
 				for _, ingredient in ipairs(r.items) do
@@ -234,6 +239,9 @@ function bc.recipe_for_grid(grid, output)
 end
 
 local function practise(player, st, r)
+	if not bc.recipe_known(st, r) then
+		bc.toast(player, "Recipe discovered: " .. bc.item_label(r.output))
+	end
 	local n = bc.times_crafted(st, r) + 1
 	st.p.crafted[r.id] = n
 	st.pack_note = nil
@@ -303,14 +311,14 @@ local gather
 -- adding the crafts needed to `steps`. Returns the item made, or nil.
 local function make(st, pool, ingredient, steps, busy)
 	for _, r in ipairs(bc.recipes) do
-		local out = ItemStack(r.output)
-		if not busy[r.id] and fits(ingredient, out:get_name()) and bc.recipe_known(st, r)
+		if not busy[r.id] and fits(ingredient, r.output_name) and bc.recipe_known(st, r)
 				and bc.times_crafted(st, r) >= bc.CRAFT_AUTO then
 			local trial, trial_steps = table.copy(pool), {}
 			busy[r.id] = true
 			local items, missing = gather(st, trial, r, trial_steps, busy)
 			busy[r.id] = nil
 			if #missing == 0 then
+				local out = ItemStack(r.output)
 				for name in pairs(pool) do pool[name] = nil end
 				for name, count in pairs(trial) do pool[name] = count end
 				for _, step in ipairs(trial_steps) do steps[#steps + 1] = step end
@@ -339,7 +347,9 @@ function gather(st, pool, r, steps, busy)
 	end
 	for i, ingredient in ipairs(r.items) do
 		if not items[i] then
-			items[i] = make(st, pool, ingredient, steps, busy)
+			-- Another missing slot may have just yielded surplus (e.g. two
+			-- lengths of nettle cordage), or returned the required tool.
+			items[i] = take_from_pool(pool, ingredient) or (steps and make(st, pool, ingredient, steps, busy))
 			if not items[i] then missing[#missing + 1] = ingredient end
 		end
 	end
@@ -351,7 +361,8 @@ end
 -- or nil and the list of ingredients the player is short of.
 function bc.plan_craft(st, pool, r)
 	local steps = {}
-	local items, missing = gather(st, table.copy(pool), r, steps, {[r.id] = true})
+	local practised = bc.times_crafted(st, r) >= bc.CRAFT_LAYOUT
+	local items, missing = gather(st, table.copy(pool), r, practised and steps or nil, {[r.id] = true})
 	if #missing > 0 then return nil, missing end
 	return {items = items, steps = steps}
 end
@@ -387,6 +398,21 @@ local function put(list, stack)
 		end
 	end
 	return false
+end
+
+-- Return a whole layout, including worn tools and item metadata. Try it
+-- against copies first so a full pack leaves the player's grid intact.
+function bc.clear_craft_grid(player)
+	local inv = player:get_inventory()
+	local main = inv:get_list("main")
+	for _, stack in ipairs(inv:get_list("craft")) do
+		if not stack:is_empty() and not put(main, stack) then
+			return false, "Make some space in your pack first."
+		end
+	end
+	inv:set_list("main", main)
+	inv:set_list("craft", {})
+	return true, "Crafting materials returned to your pack."
 end
 
 -- Lay recipe `r` out in the player's craft grid, first making whatever is
@@ -426,7 +452,10 @@ function bc.lay_out(player, st, r)
 	end
 
 	local laid = {}
-	for i, name in ipairs(plan.items) do laid[i] = take_one(from, name) end
+	for i, name in ipairs(plan.items) do
+		laid[i] = take_one(from, name)
+		if not laid[i] then return false, "A tool would wear out along the way. Bring a spare." end
+	end
 	for _, list in ipairs({grid, spare}) do
 		for _, stack in ipairs(list) do
 			if not stack:is_empty() and not put(main, stack) then

@@ -1,7 +1,7 @@
 # Credits
 
 - Game design, direction and play-testing: Matt Koski.
-- Game code, asset generators, textures and models: written by Claude (Anthropic)
+- Game code, asset generators, textures and models: developed with Claude (Anthropic) and Codex (OpenAI)
   under Matt Koski's direction. See the AI disclosure in LICENSE.
 - Footstep, impact, cloth, book, knife, door, rock, water and woosh sounds:
   Kenney "Impact Sounds", "RPG Audio" and "Foley Sounds" packs,

@@ -31,7 +31,7 @@ bc.objectives = {
 	{"forage", "Forage something to eat", "Berry bushes, cattails by the water, wild onions. Be wary of mushrooms."},
 	{"fire", "Light a fire", "Craft a fire lay and a bow drill, carry tinder, and punch the lay with the drill. Keep trying."},
 	{"water", "Drink safe water", "Raw water can make you ill. Boil it in a clay pot at a fire. Clay lies in beds near water."},
-	{"sleep", "Sleep through a night", "Make a bough bed from leaves and sticks. Sleep where you can stay warm."},
+	{"sleep", "Sleep through a night", "Make a bed from boughs or a pallet from dry grass. Choose a warm spot to sleep."},
 	{"shelter", "Sleep in a sealed shelter", "Wall in a small space, roof it, and close it with a door. Small and well insulated is warmest."},
 	{"cook", "Eat a cooked meal", "Put raw meat or fish on a burning fire."},
 	{"hatchet", "Make a hatchet", "Rock, stick and cordage. Logs burn for hours and build solid walls."},
@@ -82,6 +82,11 @@ bc.lore = {
 	smoke = {"Smoking", "Meat on a rack near a burning fire dried in less than half the time."},
 	cold_keeps = {"Cold keeps food", "Food barely spoils when the air is near freezing, and rots within a day in the heat."},
 	warm_stones = {"A warm room", "A fire inside a sealed, well-insulated shelter left it warm for hours after the flames died."},
+	trail_signs = {"Signs along the trail", "The arrow shows the way. A pot marks water, a berry marks a patch, a hook marks fishing and a bed marks camp. Use charcoal to turn it, or a stick to clear the symbol."},
+	honing = {"A second edge", "A handful of sand or gravel at a honing slab brings back a third of a hatchet or flint knife's working life."},
+	carried_fire = {"Fire from yesterday", "An ember tucked into a roll at a fire or its glowing remains lasts six game hours. One coal can start the next camp's fire."},
+	rainwater = {"Catching the rain", "An empty clay pot left under open sky catches a clean drink in about two hours of steady rain. A downpour fills it twice as fast."},
+	camp_supper = {"Supper for two", "A pot of stew or chowder holds two helpings. Set it down and anyone at camp can take a portion. The last serving leaves the pot."},
 }
 
 function bc.learn(player, key, text)
@@ -108,7 +113,7 @@ local HINTS = {
 	hunger = "You are hungry. Forage berries and roots, fish, set snares, or hunt. Cooked food gives far more than raw.",
 	cold = "You are losing body heat. Get out of the wind, get dry, build a fire, or put on more clothing. The Condition tab of your journal shows exactly what is costing you warmth.",
 	wet = "You are wet. Wet clothes lose most of their warmth. Dry off by a fire or get under a roof.",
-	tired = "You are tired. Craft a bough bed (4 leaves, 2 sticks) and right-click it to sleep. Sleep somewhere warm or you will wake cold.",
+	tired = "You are tired. Four handfuls of dry grass or leaves and two sticks make bedding. Put it in a warm spot and right-click to sleep.",
 	night = "Night is coming and it will get colder. A fire and a shelter are what get people through the dark.",
 	hot = "You are overheating. Find shade, rest, take off warm clothing and drink.",
 	heavy = "Your pack is heavy. Over 20 kg slows you and costs extra energy. Store things at camp in a basket.",
@@ -184,10 +189,12 @@ You have the clothes you stand in and nothing else. In rough order, you need:
 <b>2. Cordage.</b> Three bundles of tall grass twist into cord. Nearly every tool is lashed with it.
 <b>3. Water.</b> Find it before you are desperate. Right-click water with an empty hand to drink. It may make you ill; boiled never will.
 <b>4. Fire.</b> A fire lay (3 sticks), a bow drill (3 sticks, cordage) and tinder in your pack. Punch the lay with the drill until it catches.
-<b>5. A bed, then walls.</b> A bough bed (4 leaves, 2 sticks) lets you sleep. A small sealed shelter round it keeps you warm.
+<b>5. A bed, then walls.</b> Four leaves and two sticks make a bough bed. On treeless ground, gather dry grass for a thinner sleeping pallet. Put it out of the wind.
 <b>6. Food.</b> You can go days without it, but you weaken. Forage first; fish, trap and hunt when you have tools.
 
 Hands learn. Anything you have made once can be laid out in the craft grid from the <b>Crafting</b> tab: double-click it there. Make a thing five times and it is second nature, made for you on the way whenever another recipe needs it.
+
+Pin a recipe to see what you still need while gathering. In the recipe book, <b>Have materials</b> shows what you can make with the pack you have now.
 
 The <b>Notes</b> tab tracks these as goals. The <b>Condition</b> tab tells you what your body needs right now.]]},
 	{"Reading your body", [[
@@ -215,7 +222,7 @@ Drinking straight from a pond or river (right-click with an empty hand) works, b
 
 Snow can be eaten, at a cost in body heat. Better to pack a pot with it and melt it.
 
-A waterskin of cured hide carries a drink with you.]]},
+A waterskin of cured hide carries a drink with you. Right-click a placed full pot with an empty skin to fill it for the trail. Leave a spare clay pot outside when the weather turns wet.]]},
 	{"Fire", [[
 <big><b>Fire</b></big>
 
@@ -229,7 +236,7 @@ Rain eats an open fire. A storm can drown it.
 
 Not all tinder is equal, and a drill is not the only way to make a spark. Keep your eyes open.
 
-Put raw food or a pot of water on the fire to cook it.]]},
+Put raw food or a pot of water on the fire to cook it. Cattail roots and berry cakes can finish slowly in the coals after the flames die.]]},
 	{"Shelter and warmth", [[
 <big><b>Shelter and warmth</b></big>
 
@@ -243,7 +250,7 @@ There is no magic shelter block. Warmth follows from what you build:
 
 Building is work. Every block placed costs energy, and heavy materials cost more.
 
-Clothing adds warmth everywhere you go. Furs are the only thing that makes deep cold bearable, and a burden in the heat. A bed keeps the ground from stealing your warmth while you sleep.]]},
+Use a garment in your hand to put it on. The old one comes back into your hand. Furs help in deep cold and become a burden in the heat. A bed keeps the ground from stealing your warmth while you sleep.]]},
 	{"Foraging", [[
 <big><b>Foraging</b></big>
 
@@ -255,6 +262,8 @@ Plants will not make you fat, but they keep you going while you learn to hunt.
 <b>Prickly pear</b> in dry country gives sweet fruit full of water.
 <b>Acorns</b> drop from oaks in plenty. They are bitter. There may be a way round that.
 <b>Mushrooms</b> are a gamble. The kinds here are not the kinds anywhere else, and one of them can kill. Sneak and use one to <b>taste a small piece first</b>, and write down what happens.
+
+Before leaving a picked berry bush, look at its new growth. Fallen mossy logs are worth a closer look too.
 
 Some plants are worth more as medicine or tinder than as food. Pick things up; your journal notes what you learn.]]},
 	{"Fishing and trapping", [[
@@ -310,7 +319,7 @@ Food spoils fast in heat and hardly at all near freezing.]]},
 
 Everything here works for a group, and most of it works better.
 
-Everyone starts in the same place. A <b>cairn</b> (five rocks) marks a camp; right-click someone else's cairn to share it. Your journal shows the bearing home, and if you die you wake there.
+Everyone starts in the same place. A <b>cairn</b> (five rocks) marks a camp. Right-click someone else's cairn to share it. Choose <b>Track camp</b> in Condition for a bearing home. When there is room to stand there, you wake at your cairn after death.
 
 One fire warms everyone near it. Every body in a sealed shelter warms it for the rest. One person can tend the fire and the drying racks while others hunt.
 
@@ -318,7 +327,7 @@ Dressings can be applied to a companion: hold the bandage or poultice and punch 
 
 When <b>everyone</b> is asleep the night passes in moments. If someone stays up, it does not.
 
-If you die, your pack stays where you fell for whoever reaches it.]]},
+If you die, your pack stays where you fell for whoever reaches it. Choose <b>Track lost pack</b> in Condition to follow its bearing.]]},
 	{"Controls", [[
 <big><b>Controls</b></big>
 
@@ -463,29 +472,38 @@ end
 -- ---------------------------------------------------------------------
 -- Crafting tab
 -- ---------------------------------------------------------------------
-local GROUP_ICON = {["group:bc_knife"] = "bc:sharp_stone", ["group:bc_thatch"] = "bc:grass", ["group:leaves"] = "bc:pine_leaves"}
+local GROUP_ICON = {["group:bc_knife"] = "bc:sharp_stone", ["group:bc_thatch"] = "bc:grass",
+	["group:leaves"] = "bc:pine_leaves", ["group:bc_berry"] = "bc:berries_blue", ["group:bc_pot_water"] = "bc:pot_water_raw"}
 
-local function build_recipe_list(st)
-	local list = {}
-	local last_cat
+local function build_recipe_list(st, pool)
+	local list, sections, categories = {}, {}, {}
 	for _, r in ipairs(bc.recipes) do
 		if bc.recipe_known(st, r) then
-			if r.cat ~= last_cat then
-				list[#list + 1] = {header = r.cat}
-				last_cat = r.cat
+			local plan, missing = bc.plan_craft(st, pool, r)
+			if plan or not st.recipes_ready then
+				if not sections[r.cat] then
+					categories[#categories + 1] = r.cat
+					sections[r.cat] = {}
+				end
+				local section = sections[r.cat]
+				section[#section + 1] = {key = r.id, recipe = r, label = bc.item_label(r.output),
+					plan = plan, missing = missing}
 			end
-			list[#list + 1] = {recipe = r, label = bc.item_label(r.output)}
 		end
+	end
+	for _, cat in ipairs(categories) do
+		list[#list + 1] = {header = cat}
+		for _, row in ipairs(sections[cat]) do list[#list + 1] = row end
 	end
 	local function processes(title, tbl, how)
 		local names = {}
 		for input in pairs(tbl) do
-			if st.p.items[input] then names[#names + 1] = input end
+			if st.p.items[input] and (not st.recipes_ready or (pool[input] or 0) > 0) then names[#names + 1] = input end
 		end
 		table.sort(names)
 		if #names > 0 then list[#list + 1] = {header = title} end
 		for _, input in ipairs(names) do
-			list[#list + 1] = {process = {input = input, out = tbl[input].out, time = tbl[input].time, how = how},
+			list[#list + 1] = {key = title .. input, process = {input = input, out = tbl[input].out, time = tbl[input].time, how = how},
 				label = bc.item_label(tbl[input].out)}
 		end
 	end
@@ -495,22 +513,35 @@ local function build_recipe_list(st)
 end
 
 local function crafting_tab(player, st)
-	local list = build_recipe_list(st)
-	st.recipe_list = list
+	local previous = st.recipe_list and st.recipe_list[st.sel_recipe or 2]
+	local selected_key = st.select_recipe_key or (previous and previous.key)
+	st.select_recipe_key = nil
 	local pool = bc.craft_pool(player)
-	local rows = {}
+	local list = build_recipe_list(st, pool)
+	st.recipe_list, st.recipe_pool = list, pool
+	local rows, sel = {}, 2
 	for i, e in ipairs(list) do
 		if e.header then
 			rows[i] = "#c8b070" .. core.formspec_escape("- " .. e.header .. " -")
 		else
+			if e.key == selected_key then sel = i end
 			-- green: practised, and the materials are there to lay it out now
-			local ready = e.recipe and bc.times_crafted(st, e.recipe) >= bc.CRAFT_LAYOUT and bc.plan_craft(st, pool, e.recipe)
-			rows[i] = (ready and GOOD or "") .. core.formspec_escape("   " .. e.label)
+			local ready = e.recipe and bc.times_crafted(st, e.recipe) >= bc.CRAFT_LAYOUT and e.plan
+			local prefix = st.p.pinned_recipe == e.key and "* " or "   "
+			rows[i] = (ready and GOOD or "") .. core.formspec_escape(prefix .. e.label)
 		end
 	end
-	local sel = st.sel_recipe or 2
-	if not list[sel] or list[sel].header then sel = 2 end
-	local fs = "textlist[0.3,0.4;4.6,10.1;recipes;" .. table.concat(rows, ",") .. ";" .. sel .. ";false]"
+	st.sel_recipe = sel
+	local fs = "checkbox[0.4,0.8;filter_recipes;Have materials;" .. (st.recipes_ready and "true" or "false") .. "]"
+		.. "tooltip[filter_recipes;Only show recipes with ingredients in your pack and craft grid.]"
+	if bc.recipe_by_id[st.p.pinned_recipe] then
+		fs = fs .. "button[3.1,0.45;1.8,0.65;show_pin;Pinned]"
+			.. "tooltip[show_pin;Open your pinned recipe.]"
+	end
+	if #list == 0 then
+		return fs .. hyper(0.45,1.4,8.7,2.5,"empty","No recipes match what you carry. Clear <b>Have materials</b> to see the rest of the book.")
+	end
+	fs = fs .. "textlist[0.3,1.25;4.6,9.25;recipes;" .. table.concat(rows, ",") .. ";" .. sel .. ";false]"
 	local e = list[sel]
 	if not e then return fs end
 	local x = 5.3
@@ -527,7 +558,7 @@ local function crafting_tab(player, st)
 			counts[item] = (counts[item] or 0) + 1
 		end
 		local made = bc.times_crafted(st, r)
-		local plan, missing = bc.plan_craft(st, pool, r)
+		local plan, missing = e.plan, e.missing
 		for i, item in ipairs(order) do
 			local y = 2.7 + (i - 1) * 0.95
 			local have = bc.pool_count(pool, item)
@@ -561,9 +592,10 @@ local function crafting_tab(player, st)
 			end
 			if st.craft_note then t[#t + 1] = col(BAD, hesc(st.craft_note)) end
 		end
-		local bottom = H - 0.4
+		local bottom = H - 1.4
+		fs = fs .. "button[10.2," .. (H - 1.2) .. ";2.95,0.8;pin_recipe;" .. (st.p.pinned_recipe == r.id and "Unpin recipe" or "Pin recipe") .. "]"
+			.. "tooltip[pin_recipe;Track missing materials on screen while gathering.]"
 		if made >= bc.CRAFT_LAYOUT and plan then
-			bottom = H - 1.4
 			fs = fs .. "button[" .. x .. "," .. (H - 1.2) .. ";4.6,0.8;lay_out;Lay it out in the craft grid]"
 				.. "tooltip[lay_out;Or double-click the recipe in the list.]"
 		end
@@ -644,6 +676,10 @@ local function pack_tab(player, st)
 		.. "list[current_player;main;1.875,6.6;8,3]"
 		.. "listring[current_player;main]listring[current_player;craft]"
 		.. "listring[current_player;main]listring[current_player;clothing]"
+	if not player:get_inventory():is_empty("craft") then
+		fs = fs .. "button[9.45,3.55;3.35,0.7;clear_grid;Return materials]"
+			.. "tooltip[clear_grid;Move the whole craft grid back into your pack.]"
+	end
 	return fs
 end
 
@@ -654,7 +690,8 @@ local function build(player, st)
 	if tab == 1 then
 		fs = fs .. pack_tab(player, st)
 	elseif tab == 2 then
-		fs = fs .. hyper(0.4, 0.4, W - 0.8, H - 0.8, "cond", condition_text(player, st))
+		fs = fs .. hyper(0.4, 0.4, W - 0.8, H - 1.85, "cond", condition_text(player, st))
+			.. bc.trail.controls(st, 0.4, H - 1.2)
 	elseif tab == 3 then
 		fs = fs .. crafting_tab(player, st)
 	elseif tab == 4 then
@@ -682,6 +719,11 @@ function bc.journal.refresh(player, st)
 	end
 	st.fs_dirty = false
 end
+
+core.register_on_player_inventory_action(function(player)
+	local st = bc.state(player)
+	if st then st.fs_dirty = true end
+end)
 
 -- Lay the selected recipe out in the craft grid and turn to the Pack tab,
 -- where the grid is. If it cannot be done the Crafting tab says why.
@@ -711,6 +753,20 @@ core.register_on_player_receive_fields(function(player, formname, fields)
 		st.tab = tonumber(fields.tabs) or 1
 		st.pack_note = nil
 		bc.sound("bc_page", player, 0.4)
+	elseif fields.clear_grid and st.tab == 1 then
+		local _, message = bc.clear_craft_grid(player)
+		st.pack_note = message
+	elseif fields.filter_recipes and st.tab == 3 then
+		st.recipes_ready = fields.filter_recipes == "true"
+	elseif fields.show_pin and st.tab == 3 then
+		st.select_recipe_key = st.p.pinned_recipe
+		st.recipes_ready = false
+	elseif fields.pin_recipe and st.tab == 3 then
+		local selected = st.recipe_list and st.recipe_list[st.sel_recipe or 2]
+		if selected and selected.recipe then
+			if st.p.pinned_recipe == selected.recipe.id then st.p.pinned_recipe = nil
+			else st.p.pinned_recipe = selected.recipe.id end
+		end
 	elseif fields.recipes then
 		local ev = core.explode_textlist_event(fields.recipes)
 		if ev.type == "CHG" or ev.type == "DCL" then st.sel_recipe = ev.index end
@@ -752,9 +808,12 @@ end
 
 function bc.journal.death_screen(player, st, why, days)
 	local text = string.format("<center><big><b>You died of %s.</b></big>\n\nYou lasted %.1f days. Your longest is %.1f.\n\n"
-		.. "Everything you carried lies where you fell.\nWhat you learned, you keep.</center>", hesc(why), days, st.p.best or days)
-	core.show_formspec(st.name, "bc:death", "formspec_version[6]size[9,5.6]bgcolor[#171b17f4;false]"
-		.. hyper(0.5, 0.6, 8, 3.6, "death", text) .. "button_exit[3,4.4;3,0.8;ok;Begin again]")
+		.. "What you learned, you keep.", hesc(why), days, st.p.best or days)
+	if st.p.lost_pack then
+		text = text .. "\n\nChoose <b>Track lost pack</b> in your journal's Condition tab to find your belongings."
+	end
+	core.show_formspec(st.name, "bc:death", "formspec_version[6]size[9,6]bgcolor[#171b17f4;false]"
+		.. hyper(0.5, 0.5, 8, 4.25, "death", text .. "</center>") .. "button_exit[3,4.9;3,0.8;ok;Begin again]")
 end
 
 -- Once a second from the vitals loop: tips, time-based goals, live refresh.
@@ -802,9 +861,15 @@ function bc.journal.tick(player, st)
 		if not lit then bc.learn(player, "warm_stones") end
 	end
 
+	local pinned = bc.recipe_by_id[st.p.pinned_recipe]
+	local pool = (pinned or st.tab == 3) and bc.craft_pool(player)
 	if st.hud and st.hud.goal then
 		local nxt = next_objective(st)
 		local text = (nxt and not st.p.hide_goal) and ("Next: " .. nxt[2]) or ""
+		if pinned then
+			local plan, missing = bc.plan_craft(st, pool, pinned)
+			text = bc.item_label(pinned.output) .. "\n" .. (plan and "Materials ready" or ("Gather " .. bc.count_labels(missing)))
+		end
 		if st.goal_text ~= text then
 			st.goal_text = text
 			player:hud_change(st.hud.goal, "text", text)
@@ -812,6 +877,11 @@ function bc.journal.tick(player, st)
 	end
 
 	st.fs_n = (st.fs_n or 0) + 1
+	if st.tab == 3 then
+		local last = st.recipe_pool or {}
+		for item, count in pairs(pool) do if last[item] ~= count then st.fs_dirty = true break end end
+		for item in pairs(last) do if not pool[item] then st.fs_dirty = true break end end
+	end
 	if st.fs_dirty or (st.tab == 2 and st.fs_n % 2 == 0) or (st.tab == 1 and st.fs_n % 3 == 0) then
 		bc.journal.refresh(player, st)
 	end

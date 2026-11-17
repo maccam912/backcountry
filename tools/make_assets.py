@@ -151,32 +151,30 @@ def terrain():
     side("snow_side", (238, 242, 248), 4, 24)
 
     def water(name, col, alpha, frames, flow):
-        vn = VNoise(name, 4)
-        img = Image.new("RGBA", (S, S * frames))
+        # The light follows long wavelets. Broad, low-contrast ripples
+        # stay readable at shore without turning distant lakes into white noise.
+        size = 32
+        vn = VNoise(name, 3, size)
+        img = Image.new("RGBA", (size, size * frames))
         px = img.load()
         for f in range(frames):
-            ph = f / frames
-            for y in range(S):
-                for x in range(S):
-                    if flow:
-                        v = vn.at(x, (y - ph * S) % S)
-                        w = math.sin((x * 0.9) + v * 5)
-                    else:
-                        v = vn.at((x + math.sin(ph * 2 * math.pi) * 2) % S, (y + math.cos(ph * 2 * math.pi) * 2) % S)
-                        w = math.sin((x + y) * 0.55 + ph * 2 * math.pi + v * 6)
-                    c = mul(col, 0.9 + v * 0.2)
-                    a = alpha
-                    if w > 0.86:
-                        c = mix(c, (220, 236, 248), 0.5)
-                        a = min(255, alpha + 30)
-                    px[x, f * S + y] = c + (a,)
+            phase = math.tau * f / frames
+            for y in range(size):
+                for x in range(size):
+                    u, v = math.tau * x / size, math.tau * y / size
+                    n = vn.at(x, (y - f * size / frames) % size) if flow else vn.at(x, y)
+                    wave = math.cos((u + 3 * v if flow else 2 * v) - phase + 1.5 * math.sin(u) + n)
+                    crest = max(0, wave - 0.72) * (0.45 + n)
+                    shade = mul(col, 0.92 + 0.12 * n + wave * 0.04)
+                    c = mix(shade, (176, 209, 204), crest * (0.95 if flow else 0.68))
+                    px[x, f * size + y] = c + (alpha,)
         save(img, name)
 
-    water("water_anim", (38, 86, 138), 176, 8, False)
-    water("water_flow_anim", (38, 86, 138), 176, 8, True)
-    water("river_anim", (52, 118, 146), 150, 8, False)
-    water("river_flow_anim", (52, 118, 146), 150, 8, True)
-    for name, col, a in (("water", (38, 86, 138), 176), ("river", (52, 118, 146), 150)):
+    water("water_anim", (46, 91, 114), 180, 16, False)
+    water("water_flow_anim", (46, 91, 114), 180, 16, True)
+    water("river_anim", (55, 111, 118), 155, 16, False)
+    water("river_flow_anim", (55, 111, 118), 155, 16, True)
+    for name, col, a in (("water", (46, 91, 114), 180), ("river", (55, 111, 118), 155)):
         tile(name, lambda x, y, r, col=col, a=a, vn=VNoise(name): mul(col, 0.9 + vn.at(x, y) * 0.2) + (a,))
 
 
@@ -881,28 +879,91 @@ def pots_and_clothes():
     sprite("grass_cape", cape)
 
 
+def campfires():
+    size = 32
+    bark, split, char = "#6b4634", "#af8052", "#493a35"
+    heart, ash, grey = "#cc9763", "#6c6259", "#91857a"
+    red, orange, gold = "#a23c25", "#e47732", "#ffbe61"
+
+    def firewood(d, start, end, burnt):
+        x, y = start
+        u, v = end
+        d.line((x, y, u, v), fill="#342e2a", width=6)
+        d.line((x, y - 1, u, v - 1), fill=char if burnt else bark, width=4)
+        d.line((x + 1, y - 2, u - 1, v - 2), fill=ash if burnt else split)
+        # Breaks in the bark follow the grain. The front end shows split wood.
+        for step in (0.23, 0.49, 0.75):
+            cx, cy = round(x + (u - x) * step), round(y + (v - y) * step)
+            d.line((cx, cy, cx + 1, cy), fill=red if burnt else "#886449")
+        d.ellipse((u - 2, v - 2, u + 2, v + 2), fill="#362e29")
+        d.ellipse((u - 1, v - 2, u + 1, v + 1), fill=ash if burnt else heart)
+        d.line((u, v - 1, u, v), fill=red if burnt else "#856042")
+
+    def hearth(burning):
+        frame = Image.new("RGBA", (size, size))
+        d = ImageDraw.Draw(frame)
+        d.polygon([(1, 27), (5, 23), (12, 21), (24, 22), (30, 26),
+                   (28, 29), (21, 30), (8, 30), (3, 29)], fill="#494139")
+        d.ellipse((4, 24, 27, 29), fill=ash if burning else "#66533c")
+        firewood(d, (4, 23), (24, 28), burning)
+        firewood(d, (24, 22), (6, 28), burning)
+        # The bed of coals stays visible between the logs as the flames move.
+        for x, y, r in ((8, 25, 2), (12, 23, 2), (16, 24, 3), (20, 22, 2),
+                        (23, 25, 2), (10, 28, 1), (18, 27, 2)):
+            d.ellipse((x-r, y-1, x+r, y+1), fill=red if burning else "#907052")
+            d.line((x, y-1, x+1, y-1), fill=orange if burning else "#bc9a68")
+        return frame
+
+    laid = hearth(False)
+    d = ImageDraw.Draw(laid)
+    for points, color in [
+        ((8, 24, 19, 19), "#917052"), ((21, 24, 11, 18), "#c2a175"),
+        ((10, 25, 21, 20), "#d8b584"), ((11, 23, 16, 17), "#b29265"),
+        ((8, 22, 19, 24), "#d2ad76"), ((15, 23, 22, 18), "#c9a475")
+    ]:
+        d.line(points, fill=color, width=2)
+    firewood(d, (5, 24), (22, 29), False)
+    save(laid, "campfire_unlit")
+
+    coals = hearth(True)
+    d = ImageDraw.Draw(coals)
+    firewood(d, (6, 25), (21, 29), True)
+    for x, y in ((9, 23), (14, 22), (18, 25), (22, 23), (7, 28)):
+        d.line((x, y, x+1, y), fill=gold)
+    for x, y in ((5, 25), (11, 28), (18, 22), (26, 25)):
+        d.line((x, y, x+1, y), fill=grey)
+    save(coals, "campfire_embers")
+
+    frames = Image.new("RGBA", (size, size * 6))
+    for i, (sway, left, right) in enumerate(((0, 0, 0), (1, 2, -2), (2, 1, -4),
+                                             (1, -1, -2), (-1, -3, 1), (-2, -2, 2))):
+        frame = hearth(True)
+        d = ImageDraw.Draw(frame)
+        # Three separate tongues rise from between the logs. Each tip leans
+        # and stretches on a different beat while the base stays anchored.
+        d.polygon([(6, 24), (7, 20), (6, 15+left), (10, 18), (11, 13+left),
+                   (12, 16), (15, 12), (15, 8), (19+sway, 3+abs(sway)),
+                   (18+sway, 9), (21, 12), (20, 17), (23, 15), (25, 12+right),
+                   (25, 18), (26, 20), (24, 25), (16, 27), (9, 26)], fill="#d45d2a")
+        d.polygon([(8, 24), (9, 20), (9, 17+left), (13, 21), (14, 15),
+                   (17+sway, 10), (17+sway, 7+abs(sway)), (19, 13),
+                   (17, 19), (20, 16), (21, 19), (24, 16+right),
+                   (23, 23), (18, 26), (12, 26)], fill="#f3933c")
+        d.polygon([(10, 24), (12, 20), (14, 22), (16+sway, 15),
+                   (17, 20), (19, 18), (18, 22), (22, 19),
+                   (21, 24), (16, 26), (12, 25)], fill="#ffca65")
+        d.polygon([(13, 25), (15, 21), (15, 23), (18, 20), (17, 24),
+                   (19, 23), (17, 25)], fill="#ffe9a2")
+        if i in (1, 2, 4):
+            d.point((12+sway, 8-i), fill=gold)
+        firewood(d, (6, 25), (21, 29), True)
+        d.line((9, 24, 15, 26), fill=orange)
+        frames.paste(frame, (0, size*i))
+    save(frames, "campfire_anim")
+
+
 def fire_and_build():
-    def lay(d):
-        for a, b in (((3, 14), (8, 6)), ((13, 14), (8, 6)), ((6, 14), (9, 7)), ((10, 14), (7, 7)), ((2, 14), (14, 14))):
-            d.line([a, b], fill=A(WOOD), width=1)
-        d.line([(4, 15), (12, 15)], fill=A(WOOD_D))
-
-    def unlit(d, img):
-        lay(d)
-        d.line([(6, 13), (10, 13)], fill=A(TAN))
-
-    sprite("campfire_unlit", unlit)
-
-    def embers(d, img):
-        for a, b in (((3, 14), (8, 9)), ((13, 14), (8, 9)), ((2, 14), (14, 14))):
-            d.line([a, b], fill=A((52, 44, 40)))
-        d.line([(4, 15), (12, 15)], fill=A((70, 66, 64)))
-        for x, y in ((6, 13), (8, 12), (10, 13), (7, 14), (9, 14), (8, 10)):
-            d.point((x, y), fill=A((250, 120, 40)))
-        for x, y in ((8, 13), (5, 14)):
-            d.point((x, y), fill=A((255, 210, 90)))
-
-    sprite("campfire_embers", embers, noise=0.03)
+    campfires()
 
     def flame_frames(name, base_draw, cx, by, h, w, frames=4):
         img = Image.new("RGBA", (S, S * frames))
@@ -920,8 +981,6 @@ def fire_and_build():
                 d.point((cx + r.randint(-w, w), tip - r.randint(0, 2)), fill=A((255, 200, 90)))
             img.paste(outline(fr, 0.5), (0, f * S))
         save(img, name)
-
-    flame_frames("campfire_anim", lay, 8, 13, 11, 4)
 
     def torch_base(d):
         d.line([(8, 15), (8, 9)], fill=A(WOOD), width=2)
@@ -965,7 +1024,15 @@ def fire_and_build():
         return mul(STONE, shade + (r.random() - 0.5) * 0.08)
 
     tile("drystone", drystone)
-    tile("bed", grainy((58, 100, 60), 0.14, 0.2, 52, [((84, 128, 70), 0.14), ((38, 70, 44), 0.1), ((110, 84, 56), 0.04)]))
+    bedding = tile("bed", grainy((51, 77, 49), 0.1, 0.2, 52))
+    d = ImageDraw.Draw(bedding)
+    for start in range(-5, 22, 5):
+        d.line((start, 16, start + 3, -1), fill=(112, 87, 53))
+        for y in range(1, 17, 3):
+            x = start + (16 - y) // 5
+            d.line((x, y, x - 3, y - 3), fill=(63, 108, 68))
+            d.line((x + 1, y, x + 3, y - 3), fill=(86, 124, 79))
+    save(bedding, "bed")
 
     def bed_side(x, y, r):
         if y > 10:
@@ -973,7 +1040,14 @@ def fire_and_build():
         return mul((58, 100, 60), 0.85 + r.random() * 0.3)
 
     tile("bed_side", bed_side)
-    tile("bedroll", grainy(FUR, 0.14, 0.18, 53, [(mul(FUR, 1.3), 0.12), (FUR_D, 0.1)]))
+    def pelt(x, y, r):
+        stripe = abs(x - 7.5 + math.sin(y * 0.7) * 1.25)
+        base = mix((101, 71, 50), (188, 151, 108), min(1, stripe / 7))
+        if x in (0, 15) or y in (1, 14):
+            base = TAN if (x + y) % 3 == 0 else WOOD_D
+        return mul(base, 0.92 + r.random() * 0.16)
+
+    tile("bedroll", pelt)
     tile("bedroll_side", grainy(mul(FUR, 0.85), 0.14, 0.18, 54, [(HIDE, 0.2)]))
 
     def weave(x, y, r):
@@ -990,6 +1064,15 @@ def fire_and_build():
 
     tile("basket_top", basket_top)
     tile("remains", grainy((126, 112, 96), 0.1, 0.16, 55, [((92, 80, 68), 0.1), ((150, 60, 54), 0.02)]))
+    for name, top in (("pack_top", True), ("pack_side", False)):
+        bag = tile(name, grainy((131, 102, 68), 0.05, 0.1))
+        d = ImageDraw.Draw(bag)
+        for x in (5, 10):
+            d.rectangle((x, 0, x + 1, 15), fill=(67, 52, 37))
+            d.line((x, 0, x, 15), fill=(163, 126, 81))
+            if not top:
+                d.rectangle((x - 1, 8, x + 1, 10), outline=(192, 156, 90))
+        save(bag, name)
 
     def snare(rabbit):
         def draw(d, img):
