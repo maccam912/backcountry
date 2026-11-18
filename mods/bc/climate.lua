@@ -55,16 +55,18 @@ function bc.climate.air(pos, opts)
 	local w = bc.weather
 	local wdef = sim.WEATHER[w.state]
 	if opts.seasonal_only then
-		return sim.air_temperature({heat = heat, humidity = humidity, y = pos.y, day = bc.clock / 24,
+		local air = sim.air_temperature({heat = heat, humidity = humidity, y = pos.y, day = bc.clock / 24,
 			year_len = bc.year_len, tod = 0.375})
+		return air
 	end
-	return sim.air_temperature({
+	local air, surface = sim.air_temperature({
 		heat = heat, humidity = humidity, y = pos.y,
 		day = bc.clock / 24, year_len = bc.year_len, tod = core.get_timeofday(),
 		front = w.front, cloud = wdef.cloud,
 		precip = humidity >= 22 and wdef.precip or 0,
 		underground = opts.underground,
-	}), heat, humidity
+	}, opts.room)
+	return air, heat, humidity, surface
 end
 
 -- What is falling here: nil, or "rain"/"snow" with an intensity 1..2.
@@ -104,13 +106,47 @@ local function open(name)
 	return not def.walkable
 end
 
-local function insulation_of(name)
-	local def = core.registered_nodes[name]
-	if not def then return 0.5 end
-	return INSUL[def.groups.bc_insul or 0] or 0.5
+local function is_earth(def)
+	return def and def.is_ground_content and def.walkable and not def.groups.bc_snow
+		and (def.groups.cracky or def.groups.crumbly)
 end
 
 local MAX_ROOM = 140
+
+-- Count exposed faces, including the floor. A face backed by earth exchanges
+-- heat with the ground. Lightweight thatch stores much less heat than masonry.
+local function measure_room(room, cells)
+	local faces, insulation_sum = 0, 0
+	room.hearths = {}
+	room.ground_loss = 0
+	room.outside_loss = 0.17 * room.volume  -- leakage at half an air change per hour
+	room.capacity = 0.34 * room.volume      -- heat capacity of the air (Wh/K)
+	for _, cell in ipairs(cells) do
+		if core.get_item_group(core.get_node(cell).name, "bc_fire") > 0 then
+			room.hearths[#room.hearths + 1] = cell
+		end
+		for _, dir in ipairs(DIRS6) do
+			local wall = vector.add(cell, dir)
+			if not room.interior[core.hash_node_position(wall)] then
+				local def = core.registered_nodes[core.get_node(wall).name]
+				local groups = def and def.groups or {}
+				local insulation = INSUL[groups.bc_insul or 0] or 0.5
+				local conductance = 2.6 - 2.0 * insulation  -- W/K per square metre
+				local backing = core.registered_nodes[core.get_node(vector.add(wall, dir)).name]
+				if is_earth(backing) then
+					room.ground_loss = room.ground_loss + 1 / (1 / conductance + 0.6)
+				else
+					room.outside_loss = room.outside_loss + conductance
+				end
+				local dense = groups.cracky or groups.crumbly
+				room.capacity = room.capacity + (dense and 14 or groups.choppy and 5 or 2)
+				insulation_sum = insulation_sum + insulation
+				faces = faces + 1
+			end
+		end
+	end
+	room.insulation = insulation_sum / faces
+end
 
 -- Flood-fill the air space around `start`. If it is sealed and small
 -- enough it is a shelter: we get its volume and how well its walls
@@ -122,13 +158,13 @@ function bc.climate.analyze(start)
 		start = {x = start.x, y = start.y + 1, z = start.z}
 		if not open(core.get_node(start).name) then
 			-- buried: as sheltered as it gets
-			res.enclosed, res.volume, res.insulation, res.wind_block, res.roof = true, 1, 0.8, 1, true
+			res.wind_block, res.roof = 1, true
+			res.underground = is_earth(core.registered_nodes[core.get_node(start).name]) and 1 or 0
 			return res
 		end
 	end
 	local seen = {[core.hash_node_position(start)] = true}
 	local queue, head = {start}, 1
-	local walls, wall_sum = 0, 0
 	local sealed = true
 	while head <= #queue do
 		local p = queue[head]
@@ -145,15 +181,21 @@ function bc.climate.analyze(start)
 					sealed = false
 				elseif o then
 					queue[#queue + 1] = q
-				else
-					walls = walls + 1
-					wall_sum = wall_sum + insulation_of(name)
 				end
 			end
 		end
 		if not sealed then break end
 	end
 
+	-- Use one climate reference for everyone and everything in a sealed room.
+	if sealed then
+		local key = core.hash_node_position(start)
+		for _, cell in ipairs(queue) do
+			local h = core.hash_node_position(cell)
+			if h < key then start, key = cell, h end
+		end
+		res.origin = start
+	end
 	-- anything solid overhead keeps the rain off
 	local solid_above = 0
 	for dy = 1, 16 do
@@ -161,7 +203,7 @@ function bc.climate.analyze(start)
 		local o = open(name)
 		if o == false then
 			res.roof = true
-			if dy <= 12 then solid_above = solid_above + 1 end
+			if dy <= 12 and is_earth(core.registered_nodes[name]) then solid_above = solid_above + 1 end
 		end
 	end
 	res.underground = sim.clamp((solid_above - 3) / 6, 0, 1)
@@ -171,7 +213,7 @@ function bc.climate.analyze(start)
 		res.volume = #queue
 		res.interior = {}
 		for _, p in ipairs(queue) do res.interior[core.hash_node_position(p)] = true end
-		res.insulation = walls > 0 and wall_sum / walls or 0.5
+		measure_room(res, queue)
 		res.wind_block = 1
 		return res
 	end
@@ -190,31 +232,41 @@ function bc.climate.analyze(start)
 	return res
 end
 
--- Warmth a sealed room traps from the bodies inside it.
-local function shelter_warmth(sh, occupants)
-	if not sh.enclosed then return 0 end
-	local body = sh.insulation * sim.clamp(14 - sh.volume * 0.12, 3, 14)
-	return body + math.min(3, occupants) * 2 * sh.insulation
-end
-
--- Heat from nearby fires. Radiant heat falls off with distance and needs a
--- line of sight; inside a sealed room the whole air space warms up.
-local function fire_warmth(pos, sh)
+-- Radiant heat reaches exposed skin near a visible hearth, indoors or out.
+local function fire_warmth(pos)
 	local eye = {x = pos.x, y = pos.y + 1, z = pos.z}
 	local fires = core.find_nodes_in_area(vector.subtract(pos, 6), vector.add(pos, 6), {"group:bc_fire"})
-	local best_room, radiant = 0, 0
+	local radiant = 0
 	for _, fp in ipairs(fires) do
 		local heat = core.get_meta(fp):get_float("heat")
 		if heat > 0.02 then
 			local d = vector.distance(eye, fp)
-			local r = heat * 22 / (1 + (d / 2.2) ^ 2)
+			local r = heat * 18 / (1 + (d / 2.2) ^ 2)
 			if bc.clear_line(eye, {x = fp.x, y = fp.y + 0.3, z = fp.z}) then radiant = radiant + r end
-			if sh.interior and sh.interior[core.hash_node_position(fp)] then
-				best_room = math.max(best_room, heat * (10 + 14 * sh.insulation) / (1 + sh.volume / 60))
-			end
 		end
 	end
-	return math.max(math.min(radiant, 30), best_room)
+	return math.min(radiant, 30)
+end
+
+-- Players, food in baskets and meals in pots all sample the same room air.
+function bc.climate.local_air(pos, room)
+	room = room or bc.climate.analyze(pos)
+	local air, heat, humidity, surface = bc.climate.air(room.origin or pos, {underground = room.underground, room = room})
+	local fire_rise = 0
+	if room.enclosed then
+		for _, fp in ipairs(room.hearths) do
+			fire_rise = fire_rise + core.get_meta(fp):get_float("room_rise")
+		end
+		local people = 0
+		for _, other in ipairs(core.get_connected_players()) do
+			local st = bc.state(other)
+			local body = st and st.sleeping and vector.offset(st.sleeping.pos, 0, 1, 0)
+				or vector.round(vector.offset(other:get_pos(), 0, 0.6, 0))
+			if room.interior[core.hash_node_position(body)] then people = people + 1 end
+		end
+		air = air + fire_rise + 55 * people / (room.outside_loss + room.ground_loss + 12 * people)
+	end
+	return air, heat, humidity, surface, fire_rise
 end
 
 -- Everything about the place a player is standing that the body cares about.
@@ -223,18 +275,10 @@ function bc.climate.sample(player, st)
 	local probe = st.sleeping and vector.add(st.sleeping.pos, {x = 0, y = 1, z = 0})
 		or {x = pos.x, y = pos.y + 0.6, z = pos.z}
 	local sh = bc.climate.analyze(probe)
-	local air, heat, humidity = bc.climate.air(pos, {underground = sh.underground})
-	local kind, amount = bc.climate.precip(pos, air, humidity or 50)
+	local air, heat, humidity, outdoor_air, fire_rise = bc.climate.local_air(pos, sh)
+	local kind, amount = bc.climate.precip(pos, outdoor_air, humidity or 50)
 	local w = bc.weather
 	local tod = core.get_timeofday()
-
-	local occupants = 0
-	if sh.interior then
-		for _, other in ipairs(core.get_connected_players()) do
-			local body = vector.round(vector.offset(other:get_pos(), 0, 0.6, 0))
-			if other ~= player and sh.interior[core.hash_node_position(body)] then occupants = occupants + 1 end
-		end
-	end
 
 	local sun = 0
 	if tod > 0.25 and tod < 0.75 and not sh.roof and (core.get_natural_light(vector.round(probe), 0.5) or 0) >= 14 then
@@ -242,14 +286,15 @@ function bc.climate.sample(player, st)
 		sun = elevation * (1 - sim.WEATHER[w.state].cloud * 0.9)
 	end
 
-	local fire = fire_warmth(pos, sh)
+	local fire = fire_warmth(pos)
 	local wield = player:get_wielded_item():get_name()
 	if wield == "bc:torch" then fire = fire + 1.5 end
 
 	local c = st.clim
-	c.air, c.heat, c.humidity = air, heat or 50, humidity or 50
+	c.outdoor_air = outdoor_air
+	c.air, c.fire_rise = air, fire_rise
+	c.heat, c.humidity = heat or 50, humidity or 50
 	c.shelter = sh
-	c.shelter_warmth = shelter_warmth(sh, occupants)
 	c.fire = fire
 	c.sun = sun
 	c.wind = w.wind

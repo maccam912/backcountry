@@ -1,11 +1,10 @@
 -- Shelter parts and camp furniture.
--- A shelter works by physics, not by recipe: any sealed air space holds
--- warmth, and holds it better the smaller it is and the better its walls
--- insulate (group bc_insul 1..3). See climate.lua.
+-- Small, sealed rooms with well-insulated walls stay cooler in heat and
+-- warmer in cold. Wall insulation uses group bc_insul 1..3. See climate.lua.
 local S = bc.snd
 
 core.register_node("bc:thatch", {
-	description = "Thatch\nLight and very warm. Good for roofs and walls.",
+	description = "Thatch\nLight, well-insulated roofing and wall material.",
 	tiles = {"bc_thatch.png"},
 	is_ground_content = false,
 	groups = {snappy = 2, oddly_breakable_by_hand = 2, flammable = 3, bc_insul = 3},
@@ -46,7 +45,7 @@ core.register_node("bc:wattle", {
 })
 
 core.register_node("bc:daub", {
-	description = "Wattle and Daub\nA solid, warm wall.",
+	description = "Wattle and Daub\nA solid, well-insulated wall.",
 	tiles = {"bc_daub.png"},
 	is_ground_content = false,
 	groups = {crumbly = 1, oddly_breakable_by_hand = 1, bc_insul = 3},
@@ -79,7 +78,7 @@ core.override_item("bc:clay_lump", {
 })
 
 core.register_node("bc:drystone", {
-	description = "Dry-stone Wall\nStops wind; holds little heat.",
+	description = "Dry-stone Wall\nBlocks wind but gives little insulation.",
 	tiles = {"bc_drystone.png"},
 	is_ground_content = false,
 	groups = {cracky = 3, oddly_breakable_by_hand = 1, bc_insul = 1},
@@ -198,8 +197,8 @@ core.register_node("bc:basket", {
 		local meta = core.get_meta(pos)
 		local hours = bc.clock - meta:get_float("last")
 		meta:set_float("last", bc.clock)
-		if hours > 0 then
-			local _, overflow = bc.spoil_list(meta:get_inventory(), "main", (bc.climate.air(pos)), hours)
+		if hours > 0 and not meta:get_inventory():is_empty("main") then
+			local _, overflow = bc.spoil_list(meta:get_inventory(), "main", bc.climate.local_air(pos), hours)
 			for _, stack in ipairs(overflow) do core.add_item(pos, stack) end
 		end
 		return true

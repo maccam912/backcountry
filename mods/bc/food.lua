@@ -208,6 +208,26 @@ function bc.drink_from_node(user, node_name)
 end
 
 -- Right-click with an empty hand while looking at water to drink.
+-- Placement may empty the wield slot before the next control poll.
+core.register_on_placenode(function(_, _, placer)
+	local st = bc.state(placer)
+	if st then st.place_prev = true end
+end)
+
+function bc.poll_drink(player, st, place)
+	local pressed = place and not st.place_prev
+	st.place_prev = place
+	if not pressed or not player:get_wielded_item():is_empty() then return end
+	local eye = vector.add(player:get_pos(), {x = 0, y = player:get_properties().eye_height or 1.6, z = 0})
+	local to = vector.add(eye, vector.multiply(player:get_look_dir(), 3.5))
+	for pt in core.raycast(eye, to, false, true) do
+		if pt.type == "node" then
+			bc.drink_from_node(player, core.get_node(pt.under).name)
+			break
+		end
+	end
+end
+
 local poll = 0
 core.register_globalstep(function(dtime)
 	poll = poll + dtime
@@ -215,20 +235,7 @@ core.register_globalstep(function(dtime)
 	poll = 0
 	for _, player in ipairs(core.get_connected_players()) do
 		local st = bc.state(player)
-		if st then
-			local place = player:get_player_control().place
-			if place and not st.place_prev and player:get_wielded_item():is_empty() then
-				local eye = vector.add(player:get_pos(), {x = 0, y = player:get_properties().eye_height or 1.6, z = 0})
-				local to = vector.add(eye, vector.multiply(player:get_look_dir(), 3.5))
-				for pt in core.raycast(eye, to, false, true) do
-					if pt.type == "node" then
-						bc.drink_from_node(player, core.get_node(pt.under).name)
-						break
-					end
-				end
-			end
-			st.place_prev = place
-		end
+		if st then bc.poll_drink(player, st, player:get_player_control().place) end
 	end
 end)
 
@@ -308,7 +315,7 @@ local function pot(name, desc, top, extra)
 			local meta = core.get_meta(pos)
 			local hours = math.max(0, bc.clock - meta:get_float("food_last"))
 			meta:set_float("food_last", bc.clock)
-			local chance = sim.spoil_chance(def._bc_spoil.rate, bc.climate.air(pos), hours)
+			local chance = sim.spoil_chance(def._bc_spoil.rate, bc.climate.local_air(pos), hours)
 			if math.random() < chance then
 				core.set_node(pos, {name = def._bc_spoil.into})
 				core.get_meta(pos):set_string("infotext", "Empty clay pot • The food spoiled")

@@ -289,7 +289,8 @@ local function fast_step(player, st, dtime)
 	end
 	st.sprinting = sprinting
 	local speed = st.sleeping and 0 or base * (sprinting and 1.55 or 1)
-	local jump = st.sleeping and 0 or ((st.v.aff.sprain or st.load > sim.CARRY_COMFORT + 15) and 0.75 or 1)
+	-- Keep enough jump height to clear a full node even with a heavy pack and a sprain.
+	local jump = st.sleeping and 0 or 1
 	local key = speed .. "/" .. jump
 	if st.phys_key ~= key then
 		st.phys_key = key
@@ -329,7 +330,7 @@ local function update(player, st)
 	local env = {
 		activity = activity,
 		air = c.air, wind = c.wind, wind_block = c.wind_block,
-		insulation = warmth, fire = c.fire, shelter = c.shelter_warmth, sun = c.sun,
+		insulation = warmth, fire = c.fire, sun = c.sun,
 		precip = c.precip, rain_cover = rain_cover, in_water = waist,
 		load = st.load,
 		bed = st.sleeping and st.sleeping.warmth or 0,

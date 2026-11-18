@@ -8,7 +8,7 @@ sim.MAX_KCAL = 2500      -- energy you can hold "in the tank"
 sim.COMFORT_LOW = 16     -- felt temperature below which the body must work to stay warm
 sim.COMFORT_HIGH = 29    -- felt temperature above which the body must sweat
 sim.CARRY_COMFORT = 20   -- kg carried before it starts to cost you
-sim.CARRY_MAX = 55       -- kg at which you can barely move
+sim.CARRY_MAX = 55       -- kg at which the walking speed penalty stops increasing
 sim.ENERGY_USE = 1       -- multiplier on every calorie burned (the bc_energy_use setting)
 
 local function clamp(x, lo, hi)
@@ -76,7 +76,7 @@ end
 
 -- What the air feels like on the skin, with a labelled breakdown for the UI.
 -- e: air, wind (m/s), wind_block (0..1), insulation (deg C of clothing),
---    fire, shelter, sun (0..1), bed (deg C, only while sleeping), activity
+--    fire, sun (0..1), bed (deg C, only while sleeping), activity
 function sim.felt_temperature(e, v)
 	local act = sim.ACTIVITY[e.activity] or sim.ACTIVITY.rest
 	local wet = v and v.wet or 0
@@ -95,7 +95,6 @@ function sim.felt_temperature(e, v)
 	add("Wet", -wet * 7)
 	add("Clothing", (e.insulation or 0) * (1 - 0.6 * wet))
 	add("Fire", e.fire)
-	add("Shelter", e.shelter)
 	add("Sun", (e.sun or 0) * 4)
 	add("Exertion", act.heat)
 	if e.activity == "sleep" then add("Bedding", e.bed) end
@@ -345,8 +344,8 @@ end
 
 -- Movement speed multiplier from carried weight.
 function sim.load_speed(load)
-	if load <= sim.CARRY_COMFORT then return 1 end
-	return clamp(1 - (load - sim.CARRY_COMFORT) / (sim.CARRY_MAX - sim.CARRY_COMFORT) * 0.85, 0.15, 1)
+	local burden = clamp((load - sim.CARRY_COMFORT) / (sim.CARRY_MAX - sim.CARRY_COMFORT), 0, 1)
+	return 1 - 0.70 * burden
 end
 
 -- ---------------------------------------------------------------------
@@ -366,7 +365,7 @@ end
 -- p: heat, humidity (engine biome noise, roughly 0..100), y (altitude),
 --    day, year_len, tod (0..1), front (weather offset), cloud (0..1),
 --    precip (0..2), underground (0..1)
-function sim.air_temperature(p)
+function sim.air_temperature(p, room)
 	local heat = p.heat or 50
 	local humidity = p.humidity or 50
 	local mean = -12 + heat * 0.45
@@ -374,13 +373,35 @@ function sim.air_temperature(p)
 	local season_amp = 15 - heat * 0.09
 	local seasonal = -season_amp * math.cos(2 * math.pi * yf)
 	local diurnal_amp = (4 + (100 - clamp(humidity, 0, 100)) * 0.06) * (1 - 0.5 * (p.cloud or 0))
-	local diurnal = diurnal_amp * math.cos(2 * math.pi * ((p.tod or 0.5) - 0.625))
+	local phase = 2 * math.pi * ((p.tod or 0.5) - 0.625)
 	local altitude = -math.max(0, (p.y or 0) - 20) * 0.06
-	local surface = mean + seasonal + diurnal + altitude + (p.front or 0) - (p.precip or 0) * 1.5
+	local rock = mean + altitude
+	local day_mean = rock + seasonal + (p.front or 0) - (p.precip or 0) * 1.5
+	local surface = day_mean + diurnal_amp * math.cos(phase)
 	local ug = clamp(p.underground or 0, 0, 1)
-	-- deep rock holds close to the yearly average
-	local deep = mean + altitude + seasonal * 0.25
-	return surface * (1 - ug) + deep * ug
+	local ambient = surface * (1 - ug) + rock * ug
+	if not room or not room.enclosed then return ambient, surface end
+
+	-- One well-mixed air space exchanges heat with the outdoors and the earth.
+	-- Shallow soil follows some of the seasonal cycle. Deep rock follows the annual mean.
+	local ground = rock + 0.45 * seasonal * (1 - ug)
+	local loss = room.outside_loss + room.ground_loss
+	local outside_share = room.outside_loss / loss
+	local mean_air = (day_mean * (1 - ug) + rock * ug) * outside_share + ground * (1 - outside_share)
+	-- Exact response to the daily temperature wave: thermal mass damps and delays its peak.
+	local lag = (2 * math.pi / 24) * room.capacity / loss
+	local daily = diurnal_amp * (math.cos(phase) + lag * math.sin(phase)) / (1 + lag * lag)
+	return mean_air + outside_share * (1 - ug) * daily, surface
+end
+
+-- Temperature rise attributable to one hearth. Power is heat delivered to the
+-- room in watts, heat loss is W/K and effective heat capacity is Wh/K.
+function sim.hearth_warming(rise, hours, loss, capacity, power)
+	if hours <= 0 then return rise end
+	-- The fire also draws replacement air while burning.
+	local exchange = loss + power / 35
+	local target = power / exchange
+	return target + (rise - target) * math.exp(-hours * exchange / capacity)
 end
 
 -- ---------------------------------------------------------------------

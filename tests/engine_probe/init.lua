@@ -192,6 +192,7 @@ local function world_checks()
 	end end
 	clear_box({x = o.x - 6, y = o.y + 1, z = o.z - 6}, {x = o.x + 6, y = o.y + 6, z = o.z + 6})
 	local floor = o.y + 1
+	core.set_node(vector.offset(o, 0, -1, 0), {name = "bc:dirt"})
 
 	-- climate
 	local saved_clock = bc.clock
@@ -216,10 +217,34 @@ local function world_checks()
 		"sealed hut not recognised: " .. dump(hut))
 	check(hut.interior[core.hash_node_position(c)] and not hut.interior[core.hash_node_position(vector.offset(c, 1, 0, 0))],
 		"shelter contents include a wall or omit the sleeper")
+	local feet = vector.offset(c, 0, -0.5, 0)
+	local observer = {
+		get_pos = function() return feet end,
+		get_wielded_item = function() return ItemStack("") end,
+	}
+	local function sample_hut(outdoor_air, tod)
+		local front = bc.weather.front
+		local previous_tod = core.get_timeofday()
+		core.set_timeofday(tod or 0.625)
+		local room = bc.climate.analyze(c)
+		bc.weather.front = front + outdoor_air - bc.climate.air(room.origin or feet)
+		local climate = bc.climate.sample(observer, {clim = {}})
+		bc.weather.front = front
+		core.set_timeofday(previous_tod)
+		return climate
+	end
 	core.set_node({x = c.x + 1, y = c.y, z = c.z}, {name = "bc:door_open"})
 	check(not bc.climate.analyze(c).enclosed, "hut with an open door still counts as sealed")
+	local open_hot, open_cold = sample_hut(40), sample_hut(-10, 0.125)
+	check(math.abs(open_hot.air - 40) < 0.01 and math.abs(open_cold.air + 10) < 0.01,
+		"an open doorway should expose the hut to the outside air")
 	core.set_node({x = c.x + 1, y = c.y, z = c.z}, {name = "bc:door"})
 	check(bc.climate.analyze(c).enclosed, "hut with a shut door is not sealed")
+	local hot, cold = sample_hut(40), sample_hut(-10, 0.125)
+	check(cold.air > open_cold.air and cold.air < hot.air and hot.air < open_hot.air,
+		string.format("sealed hut overcorrected or failed to moderate the air: cold %.1f, hot %.1f", cold.air, hot.air))
+	check(math.abs(hot.outdoor_air - open_hot.air) < 0.01 and math.abs(cold.outdoor_air - open_cold.air) < 0.01,
+		"shutting the door changed the reported outside temperature")
 
 	-- fire inside the hut: lights, burns fuel, cooks, heats, dies to embers, cools slowly
 	local fp = {x = c.x, y = c.y, z = c.z}
@@ -238,8 +263,11 @@ local function world_checks()
 		on_timer(fp)
 	end
 	check(meta:get_float("heat") > 0.9, "fire did not heat up: " .. meta:get_float("heat"))
+	local lit = sample_hut(40)
+	check(hot.fire == 0 and lit.fire > 0 and lit.air > hot.air + 3,
+		"campfire did not heat both the air in the hut and the player in sight of it")
+	check(math.abs(lit.air - hot.air - lit.fire_rise) < 0.1, "hearth heating was counted twice in the air")
 	check(inv:contains_item("dst", "bc:meat_cooked"), "meat did not cook")
-	check(meta:get_int("encl") == 1, "fire did not notice it is enclosed")
 	for _ = 1, 60 do
 		bc.clock = bc.clock + 0.05
 		on_timer(fp)
@@ -247,6 +275,20 @@ local function world_checks()
 	check(core.get_node(fp).name ~= "bc:campfire", "fire never ran out of fuel")
 	local heat_after = meta:get_float("heat")
 	check(heat_after > 0.3, "insulated hut lost its heat too fast: " .. heat_after)
+	local fading = sample_hut(40)
+	check(fading.air > hot.air and fading.fire_rise > 0, "room lost all its stored heat when fuel ran out")
+	core.set_node(vector.offset(c, 1, 0, 0), {name = "bc:door_open"})
+	local vented = sample_hut(40)
+	check(math.abs(vented.air - open_hot.air) < 0.01 and vented.fire_rise == 0 and vented.fire > 0,
+		"opening the door failed to vent the room while leaving radiant heat near the hearth")
+	core.set_node(vector.offset(c, 1, 0, 0), {name = "bc:door"})
+	-- All embers have died by the end of a long absence.
+	bc.clock = bc.clock + 24
+	core.registered_nodes[core.get_node(fp).name].on_timer(fp)
+	local cooled = sample_hut(40)
+	check(cooled.fire_rise < fading.fire_rise / 10, "an unfuelled hearth kept the room hot for another day")
+	note("shelter_trial_celsius", {outside = open_hot.air, unheated = hot.air, burning = lit.air,
+		after_fuel = fading.air, next_day = cooled.air, door_open = vented.air})
 	-- same fire in the open loses heat fast
 	clear_box({x = c.x - 1, y = c.y, z = c.z - 1}, {x = c.x + 1, y = c.y + 2, z = c.z + 1})
 	core.set_node(fp, {name = "bc:campfire_unlit"})
@@ -259,6 +301,24 @@ local function world_checks()
 	end
 	check(meta:get_float("heat") < 0.1, "open fire kept its heat: " .. meta:get_float("heat"))
 	core.remove_node(fp)
+
+	-- Opposite ends of a long hut share air. A hearth beyond its wall belongs to a different space.
+	local endwall = vector.offset(c, 0, 0, -4)
+	for x = 0, 10 do for y = -1, 2 do for z = -1, 1 do
+		local wall = x == 0 or x == 10 or y == -1 or y == 2 or z ~= 0
+		core.set_node(vector.offset(endwall, x, y, z), {name = wall and "bc:thatch" or "air"})
+	end end end
+	local hearth = vector.offset(endwall, 1, 0, 0)
+	local far = vector.offset(endwall, 9, 0, 0)
+	local outside_fire = vector.offset(far, 0, 0, -2)
+	for _, p in ipairs({hearth, outside_fire}) do
+		core.set_node(p, {name = "bc:campfire_embers"})
+		core.get_meta(p):set_float("heat", 0.5)
+		core.get_meta(p):set_float("room_rise", 8)
+	end
+	local far_air, _, _, _, far_rise = bc.climate.local_air(far)
+	check(far_rise == 8 and far_air == bc.climate.local_air(hearth),
+		"room heating depended on distance to the hearth or crossed a closed wall")
 
 	-- drying rack
 	local rp = {x = c.x + 3, y = floor, z = c.z}
@@ -358,11 +418,19 @@ local function player_checks(player)
 	inv:add_item("main", "bc:meat_raw 3")
 	inv:add_item("main", "bc:dry_grass 5")
 	inv:add_item("main", "bc:fire_drill")
+	local normal_jump = player:get_physics_override().jump
+	inv:add_item("craft", "bc:rock 50")
+	bc.sim.add_affliction(st.v, "sprain")
 	local knife_known_before = bc.recipe_known(st, bc.recipe_by_id.knife_flint)
 	core.after(2.5, function() guarded("player phase 2", function()
 		check(not knife_known_before and bc.recipe_known(st, bc.recipe_by_id.knife_flint), "flint did not unlock the flint knife")
 		check(st.p.obj.gather and st.p.obj.knife, "gather/knife goals not ticked")
-		check(st.load > 5, "pack weight not counted: " .. st.load)
+		check(st.load >= bc.sim.CARRY_MAX, "pack weight not counted: " .. st.load)
+		local physics = player:get_physics_override()
+		check(physics.speed > 0 and physics.speed < 1 and physics.jump == normal_jump and normal_jump == 1,
+			"an overloaded player with a sprain should walk slowly and keep their full jump")
+		inv:remove_item("craft", "bc:rock 50")
+		st.v.aff.sprain = nil
 		check(st.water and (st.water.near or st.water.pos ~= nil or st.water.from), "water sense produced nothing")
 		note("water_text", bc.water_text(player, st))
 		-- the long-range reading, as if nothing were in sight
@@ -483,8 +551,6 @@ local function player_checks(player)
 		core.registered_nodes["bc:bush_blue_ripe"].on_rightclick(q, core.get_node(q), player)
 		check(core.get_node(q).name == "bc:bush_blue" and inv:contains_item("main", "bc:berries_blue 3"), "berry picking failed")
 		core.registered_nodes["bc:bush_blue"].on_timer(q)
-		core.set_node(q, {name = "bc:fish_trap"})
-		core.registered_nodes["bc:fish_trap"].on_timer(q)
 		core.set_node(q, {name = "bc:basket"})
 		core.registered_nodes["bc:basket"].on_timer(q)
 		core.set_node(q, {name = "bc:torch"})
@@ -494,6 +560,30 @@ local function player_checks(player)
 		-- water: fill a pot and a skin at a pool, drink from a placed pot, fish
 		core.set_node(q, {name = "bc:water_source"})
 		local pt = {type = "node", under = q, above = {x = q.x, y = q.y + 1, z = q.z}}
+		-- Sink the last trap with water still in the line of sight when the button is polled.
+		do
+			local source = vector.offset(q, 0, -1, 0)
+			core.set_node(source, {name = "bc:water_source"})
+			local saved_pos, saved_pitch = player:get_pos(), player:get_look_vertical()
+			player:set_pos(vector.offset(q, 0, 0.5, 0))
+			player:set_look_vertical(math.pi / 2)
+			core.set_node(vector.offset(q, 0, 2, 0), {name = "air"})
+			local trap = wield("bc:fish_trap")
+			bc.poll_drink(player, st, false)
+			local placed = trap:get_definition().on_place(trap, player, {type = "node", under = source, above = q})
+			wield(placed)
+			check(placed:is_empty() and core.get_node(source).name == "bc:fish_trap", "last fish trap did not place in water")
+			core.registered_nodes["bc:fish_trap"].on_timer(source)
+			st.v.water, st.last_drink = 40, nil
+			bc.poll_drink(player, st, true)
+			check(st.v.water == 40 and not st.last_drink, "placing the last fish trap also drank water")
+			bc.poll_drink(player, st, false)
+			bc.poll_drink(player, st, true)
+			check(st.v.water == 54, "a new empty-hand click after placing a fish trap did not drink")
+			player:set_pos(saved_pos)
+			player:set_look_vertical(saved_pitch)
+			core.set_node(source, {name = "bc:dirt"})
+		end
 		local filled = core.registered_items["bc:pot"].on_place(ItemStack("bc:pot"), player, pt)
 		check(filled:get_name() == "bc:pot_water_raw", "pot did not fill")
 		filled = core.registered_items["bc:waterskin"].on_place(ItemStack("bc:waterskin"), player, pt)

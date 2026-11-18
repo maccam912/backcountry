@@ -34,10 +34,11 @@ others join. Everyone starts in the same place.
   altitude, weather front, depth underground) adjusted for wind, wetness,
   clothing, sun, exertion, fire and shelter. Hypothermia and heat stroke both
   kill.
-- **Shelter by physics** – there is no shelter block. Any sealed air space
-  traps heat, more so the smaller it is and the better its walls insulate.
-  Walls and trees block wind; a roof keeps you dry; a fire warms a sealed room
-  and good walls stay warm after it dies. Doors matter.
+- **Shelter by physics** – ground temperature follows the local climate and
+  elevation. Earth-sheltered rooms stay steadier through hot days and cold
+  nights. Insulated walls slow heat loss, and heavy walls take longer to warm
+  and cool. A campfire gradually heats the whole closed room. Open the door
+  to vent it, or sit close to the flames for extra warmth.
 - **Weather and seasons** – fronts of cloud, rain, snow and storm; a year of
   40 days (configurable) that starts on the first day of summer.
 - **Fire** – friction fire with a bow drill and tinder, with a chance that

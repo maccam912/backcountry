@@ -164,20 +164,14 @@ local function on_timer(pos)
 	local inv = meta:get_inventory()
 	local state = STATE[core.get_node(pos).name]
 	local last = meta:get_float("last")
-	local dt = sim.clamp(bc.clock - last, 0, 3)
+	local dt = math.max(0, bc.clock - last)
 	if meta:get_string("last") == "" then dt = 0 end
 	meta:set_float("last", bc.clock)
 	local heat = meta:get_float("heat")
 
-	-- how well the space around the fire holds its warmth
-	local tick = meta:get_int("tick") + 1
-	meta:set_int("tick", tick)
-	if tick % 8 == 1 then
-		local sh = bc.climate.analyze(pos)
-		meta:set_int("encl", sh.enclosed and 1 or 0)
-		meta:set_float("insul", sh.insulation)
-	end
-	local decay = meta:get_int("encl") == 1 and 0.15 * (1.4 - meta:get_float("insul")) or 3
+	local room = bc.climate.analyze(pos)
+	local decay = room.enclosed and 0.15 * (1.4 - room.insulation) or 3
+	local burning_time, ember_time = 0, 0
 
 	if state == "lit" then
 		local rain = rained_on(pos)
@@ -198,16 +192,16 @@ local function on_timer(pos)
 			end
 		end
 		-- A large sleep tick can cover several batches, or outlast the fuel.
-		local burning_time = math.max(0, dt + math.min(0, burn) / rate)
+		burning_time = math.max(0, dt + math.min(0, burn) / rate)
 		heat = math.min(1, heat + burning_time * 5)
 		cook(meta, inv, burning_time)
 		if out then
 			meta:set_float("burn", 0)
 			local lifetime = rain >= 2 and 0.5 or 3
-			local smoulder = math.min(lifetime, dt - burning_time)
-			if smoulder > 0 then cook(meta, inv, smoulder * 0.5, true) end
-			meta:set_float("ember", lifetime - smoulder)
-			set_state(pos, smoulder < lifetime and "bc:campfire_embers" or "bc:campfire_unlit")
+			ember_time = math.min(lifetime, dt - burning_time)
+			if ember_time > 0 then cook(meta, inv, ember_time * 0.5, true) end
+			meta:set_float("ember", lifetime - ember_time)
+			set_state(pos, ember_time < lifetime and "bc:campfire_embers" or "bc:campfire_unlit")
 		else
 			meta:set_float("burn", burn)
 			if math.random() < 0.6 then bc.sound("bc_fire", pos, 0.35, {max_hear_distance = 14}) end
@@ -223,8 +217,8 @@ local function on_timer(pos)
 	elseif state == "embers" then
 		local left = meta:get_float("ember")
 		local ember = left - dt
-		cook(meta, inv, math.max(0, math.min(dt, left)) * 0.5, true)
-		heat = math.max(0.45, heat - decay * dt)
+		ember_time = math.max(0, math.min(dt, left))
+		cook(meta, inv, ember_time * 0.5, true)
 		local hours = take_fuel(inv)
 		if hours > 0 then
 			meta:set_float("burn", hours)
@@ -233,13 +227,27 @@ local function on_timer(pos)
 			set_state(pos, "bc:campfire_unlit")
 		end
 		meta:set_float("ember", ember)
-	else
-		heat = math.max(0, heat - decay * dt)
 	end
+	if ember_time > 0 then heat = math.max(0.45, heat - decay * ember_time) end
+	local cooling_time = math.max(0, dt - burning_time - ember_time)
+	heat = math.max(0, heat - decay * cooling_time)
 
+	-- Store each hearth's contribution on the node so the room keeps its heat
+	-- between visits and across saves. An open room vents to the outside.
+	local rise = meta:get_float("room_rise")
+	if room.enclosed then
+		local loss = room.outside_loss + room.ground_loss
+		rise = sim.hearth_warming(rise, burning_time, loss, room.capacity, 900)
+		rise = sim.hearth_warming(rise, ember_time, loss, room.capacity, 100)
+		rise = sim.hearth_warming(rise, cooling_time, loss, room.capacity, 0)
+	else
+		rise = 0
+	end
+	if burning_time == 0 and ember_time == 0 and rise < 0.02 then rise = 0 end
+	meta:set_float("room_rise", rise)
 	meta:set_float("heat", heat)
 	refresh(pos)
-	return state ~= "unlit" or heat > 0.01
+	return state ~= "unlit" or heat > 0.01 or rise > 0
 end
 
 local function ignite(pos)

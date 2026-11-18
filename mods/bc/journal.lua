@@ -32,7 +32,7 @@ bc.objectives = {
 	{"fire", "Light a fire", "Craft a fire lay and a bow drill, carry tinder, and punch the lay with the drill. Keep trying."},
 	{"water", "Drink safe water", "Raw water can make you ill. Boil it in a clay pot at a fire. Clay lies in beds near water."},
 	{"sleep", "Sleep through a night", "Make a bed from boughs or a pallet from dry grass. Choose a warm spot to sleep."},
-	{"shelter", "Sleep in a sealed shelter", "Wall in a small space, roof it, and close it with a door. Small and well insulated is warmest."},
+	{"shelter", "Sleep in a sealed shelter", "Wall in a small space, add a roof and shut the door. Well-insulated walls keep out heat and cold."},
 	{"cook", "Eat a cooked meal", "Put raw meat or fish on a burning fire."},
 	{"hatchet", "Make a hatchet", "Rock, stick and cordage. Logs burn for hours and build solid walls."},
 	{"fish", "Catch a fish", "Carve a hook, tie a pole, cast onto water and strike when the float dips."},
@@ -78,7 +78,7 @@ bc.lore = {
 	striker = {"Flint and pyrite", "Sparks from flint on pyrite light tinder far more easily than a drill."},
 	wind_scent = {"Scent on the wind", "The animal bolted before it could have seen you. The wind was at your back, carrying your scent. Approach with the wind in your face."},
 	fire_wolves = {"Wolves and fire", "The wolf wanted to come closer and would not. They fear flame: a campfire, or a burning torch in the hand."},
-	small_shelter = {"Small is warm", "A shelter barely bigger than your body warms from body heat alone. Big rooms need a fire."},
+	small_shelter = {"A snug shelter", "You slept in a small room where the air stayed milder than it was outside."},
 	smoke = {"Smoking", "Meat on a rack near a burning fire dried in less than half the time."},
 	cold_keeps = {"Cold keeps food", "Food barely spoils when the air is near freezing, and rots within a day in the heat."},
 	warm_stones = {"A warm room", "A fire inside a sealed, well-insulated shelter left it warm for hours after the flames died."},
@@ -115,7 +115,7 @@ local HINTS = {
 	wet = "You are wet. Wet clothes lose most of their warmth. Dry off by a fire or get under a roof.",
 	tired = "You are tired. Four handfuls of dry grass or leaves and two sticks make bedding. Put it in a warm spot and right-click to sleep.",
 	night = "Night is coming and it will get colder. A fire and a shelter are what get people through the dark.",
-	hot = "You are overheating. Find shade, rest, take off warm clothing and drink.",
+	hot = "You are overheating. Cool off in a sealed shelter or in the shade. Rest, take off warm clothing and drink.",
 	heavy = "Your pack is heavy. Over 20 kg slows you and costs extra energy. Store things at camp in a basket.",
 	raw_water = "That water was untreated. It may be fine; it may not. Still water is riskier than a running river.",
 	fire_lay = "To light a fire lay, hold a bow drill and punch the lay. You need tinder in your pack: dry grass, birch bark or beard lichen.",
@@ -208,7 +208,7 @@ Five bars sit at the lower left of the screen:
 <b>Water</b> - falls steadily, faster when you work or sweat.
 <b>Rest</b> - falls while awake. Only sleep restores it.
 
-The top right shows the day, the air temperature and what it <b>feels like</b> once wind, wet, clothing, fire and shelter are counted. If it feels like less than about 16 C your body must burn extra energy to stay warm; much less, and you start to cool.]]},
+The top right shows the temperature of the air around you. In a sealed shelter, that is the indoor air. What it <b>feels like</b> also depends on wind, wetness, sun, clothing, fire and activity. Below about 16 C your body burns extra energy to stay warm.]]},
 	{"Water", [[
 <big><b>Water</b></big>
 
@@ -240,13 +240,11 @@ Put raw food or a pot of water on the fire to cook it. Cattail roots and berry c
 	{"Shelter and warmth", [[
 <big><b>Shelter and warmth</b></big>
 
-There is no magic shelter block. Warmth follows from what you build:
-
 <b>Wind</b> strips heat. Anything solid between you and it helps: a wall, a rock face, thick trees.
 <b>A roof</b> keeps you dry. Wet clothes lose most of their warmth.
-<b>A sealed space</b> - walls, roof, no gaps, door shut - traps heat. The smaller it is and the better its walls insulate, the warmer. Thatch, packed leaves, earth, daub and snow insulate well; logs fairly; bare stone and plain wattle poorly.
-<b>A fire inside</b> a sealed shelter warms the whole space, and good walls stay warm for hours after it dies.
-<b>Company</b> helps: every body in a shelter warms it.
+<b>A sealed space</b> softens the swing from day to night. Earth around the floor and walls keeps a dugout closer to the local ground temperature. A cave in cold high country can stay cold even in summer. Thatch and daub insulate well. Bare stone loses heat faster, though its mass takes longer to warm and cool.
+<b>A fire inside</b> gradually raises the room's air temperature. A small hut warms faster, and good insulation keeps warmth in after the flames die. Open the door to let heat out. You can also feel the fire directly when you stand in sight of it.
+<b>Company</b> adds a little warmth when you share a shelter.
 
 Building is work. Every block placed costs energy, and heavy materials cost more.
 
@@ -350,7 +348,7 @@ local ADVICE = {
 	tired = "Sleep in a bed, somewhere warm enough to stay asleep.",
 	wet = "Get under a roof or beside a fire to dry out.",
 	load = "Leave some of your load at camp.",
-	heat = "Find shade, rest, shed warm clothing, drink.",
+	heat = "Cool off in a sealed shelter or in the shade. Rest, shed warm clothing and drink.",
 }
 
 local function cold_advice(st)
@@ -417,8 +415,13 @@ local function condition_text(player, st)
 	local where
 	if sh.enclosed then
 		local q = sh.insulation > 0.85 and "very well insulated" or sh.insulation > 0.6 and "fairly well insulated" or "poorly insulated"
-		where = string.format("You are in a sealed space of about %d cubic metres, %s. It traps %s of warmth.",
-			sh.volume, q, bc.temp_delta(st, c.shelter_warmth or 0, true))
+		where = string.format("You are in a sealed space of about %d cubic metres, %s.", sh.volume, q)
+		if c.air and c.outdoor_air then
+			where = where .. string.format(" The air is %s inside and %s outside.", bc.temp(st, c.air), bc.temp(st, c.outdoor_air))
+			if (c.fire_rise or 0) >= 0.5 then
+				where = where .. " The hearth has warmed the indoor air by " .. bc.temp_delta(st, c.fire_rise) .. "."
+			end
+		end
 	elseif sh.roof then
 		where = string.format("You are under cover but the space is open to the air. About %d%% of the wind is blocked.", math.floor((sh.wind_block or 0) * 100))
 	else
@@ -853,11 +856,15 @@ function bc.journal.tick(player, st)
 	if season == "Spring" and st.p.saw_winter then bc.objective(player, "winter") end
 
 	-- discoveries that come from simply living through something
-	if st.sleeping and c.shelter and c.shelter.enclosed and c.shelter.volume <= 8 and (c.shelter_warmth or 0) >= 8 then
+	if st.sleeping and c.shelter and c.shelter.enclosed and c.shelter.volume <= 8
+			and c.air and c.outdoor_air and math.abs(c.air - c.outdoor_air) >= 8 then
 		bc.learn(player, "small_shelter")
 	end
-	if c.shelter and c.shelter.enclosed and (c.fire or 0) > 6 and c.shelter.insulation > 0.8 then
-		local lit = core.find_node_near(player:get_pos(), 6, {"bc:campfire"})
+	if c.shelter and c.shelter.enclosed and (c.fire_rise or 0) > 6 and c.shelter.insulation > 0.8 then
+		local lit = false
+		for _, fp in ipairs(c.shelter.hearths) do
+			if core.get_node(fp).name == "bc:campfire" then lit = true; break end
+		end
 		if not lit then bc.learn(player, "warm_stones") end
 	end
 

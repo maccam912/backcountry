@@ -75,15 +75,15 @@ craft("torch_fat", "Fire", "bc:torch_unlit 2", {"bc:stick", "bc:stick", "bc:dry_
 
 -- Shelter -------------------------------------------------------------
 craft("thatch", "Shelter", "bc:thatch 3", n("group:bc_thatch", 4),
-	{note = "Bundled grass or leafy boughs. Light, quick to make, and it holds warmth very well."})
+	{note = "Bundled grass or leafy boughs. Light, quick to make, and good insulation against heat and cold."})
 craft("wattle", "Shelter", "bc:wattle 2", n("bc:stick", 6),
 	{note = "Woven sticks. A fast wall, but draughty until it is daubed with clay."})
 craft("daub", "Shelter", "bc:daub", {"bc:wattle", "bc:clay_lump", "bc:grass"},
-	{unlock = {"bc:clay_lump"}, note = "Bind clay with grass for a warm wall. You can also use clay on a standing wattle panel with green grass in your pack."})
+	{unlock = {"bc:clay_lump"}, note = "Bind clay with grass to insulate the wall. You can also use clay on a standing wattle panel with green grass in your pack."})
 craft("door", "Shelter", "bc:door", {"bc:wattle", "bc:stick", "bc:cordage"},
-	{note = "A hinged panel. Stack two for a doorway. A shelter only holds heat with the door shut."})
+	{note = "A hinged panel. Stack two for a doorway. Shut the door to keep out summer heat and winter cold."})
 craft("drystone", "Shelter", "bc:drystone", n("bc:rock", 4),
-	{note = "Rocks fitted without mortar. Blocks wind; holds heat poorly."})
+	{note = "Rocks fitted without mortar. The wall blocks wind but gives little insulation."})
 craft("snow_block", "Shelter", "bc:snow_block", n("bc:snowball", 4),
 	{unlock = {"bc:snowball"}, note = "Packed snow is one of the best insulators there is."})
 craft("bed", "Shelter", "bc:bed", join(n("group:leaves", 4), n("bc:stick", 2)),

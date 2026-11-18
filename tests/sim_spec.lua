@@ -26,7 +26,7 @@ end
 
 local function env(t)
 	local e = {activity = "rest", air = 20, wind = 0, wind_block = 0, insulation = 5,
-		fire = 0, shelter = 0, sun = 0, precip = 0, load = 5}
+		fire = 0, sun = 0, precip = 0, load = 5}
 	for k, v in pairs(t or {}) do e[k] = v end
 	return e
 end
@@ -87,7 +87,8 @@ test("a heavy pack makes walking cost more and slows you", function()
 	sim.step(heavy, 2, env{activity = "walk", load = 45}, make_rng())
 	check(heavy.kcal < light.kcal - 50)
 	check(heavy.rest < light.rest)
-	check(sim.load_speed(10) == 1 and sim.load_speed(45) < 0.6 and sim.load_speed(80) >= 0.15)
+	check(sim.load_speed(10) == 1 and math.abs(sim.load_speed(45) - 0.5) < 0.001)
+	check(math.abs(sim.load_speed(55) - 0.3) < 0.001 and sim.load_speed(80) == sim.load_speed(55))
 end)
 
 test("eight hours in a good bed restores rest; a bad bed does not", function()
@@ -153,7 +154,7 @@ end)
 
 test("the same night is survivable with furs, a shelter and a fire", function()
 	local v = sim.new_vitals(); v.kcal = 2500; v.water = 100
-	local e = env{air = -10, wind = 8, wind_block = 1, insulation = 24, shelter = 6, fire = 10}
+	local e = env{air = -6, wind = 8, wind_block = 1, insulation = 24, fire = 10}
 	run(v, 12, e, make_rng())
 	check(v.core > 36.5 and v.condition == 100, v.core .. " / " .. v.condition)
 end)
@@ -265,6 +266,24 @@ test("statuses report the worst problem first", function()
 end)
 
 print("climate and weather")
+test("deep caves follow regional climate and elevation across seasons", function()
+	local function cave(heat, y, day)
+		return sim.air_temperature{heat = heat, y = y, day = day, underground = 1}
+	end
+	check(cave(35, 20, 0) == cave(35, 20, 20))
+	check(cave(75, 20, 0) > cave(35, 20, 0) + 15)
+	check(cave(75, 120, 0) < cave(75, 20, 0) - 5)
+end)
+test("insulation limits heat loss and thermal mass slows heating and cooling", function()
+	local function gain(loss, mass) return sim.hearth_warming(0, 2, loss, mass, 900) end
+	check(gain(20, 50) > gain(70, 50))
+	check(gain(20, 50) > gain(20, 200))
+	local warm = gain(20, 50)
+	check(sim.hearth_warming(warm, 1, 20, 50, 0) > sim.hearth_warming(warm, 1, 70, 50, 0))
+	check(sim.hearth_warming(warm, 1, 20, 200, 0) > sim.hearth_warming(warm, 1, 20, 50, 0))
+	local half = sim.hearth_warming(0, 1, 20, 50, 900)
+	check(math.abs(sim.hearth_warming(half, 1, 20, 50, 900) - warm) < 0.0001)
+end)
 test("seasons, time of day, altitude and caves all move the air temperature", function()
 	local function t(o)
 		local p = {heat = 50, humidity = 50, y = 10, day = 5, year_len = 40, tod = 0.625}
@@ -341,7 +360,8 @@ local function survivor(days, careful, seed)
 	local year = 40
 	for hour = 0, days * 24 - 1 do
 		local tod = (hour % 24) / 24
-		local air = sim.air_temperature{heat = 45, humidity = 60, y = 12, day = hour / 24, year_len = year, tod = tod}
+		local climate = {heat = 45, humidity = 60, y = 12, day = hour / 24, year_len = year, tod = tod}
+		local air = sim.air_temperature(climate)
 		local night = tod < 0.25 or tod > 0.8
 		-- the careful one dresses for the weather and only lights a fire when it is needed
 		local e = env{air = air, wind = 4, insulation = careful and sim.clamp(20 - air, 3, 26) or 5}
@@ -349,8 +369,9 @@ local function survivor(days, careful, seed)
 			e.activity = "sleep"
 			if careful then
 				e.wind_block, e.bed_quality, e.bed = 1, 0.85, 3
-				e.shelter = air < 14 and 8 or 0
-				e.fire = air < 2 and 8 or 0
+				e.air = sim.air_temperature(climate, {enclosed = true, outside_loss = 48, ground_loss = 8, capacity = 220})
+				e.insulation = sim.clamp(20 - e.air, 3, 26)
+				e.fire = e.air < 2 and 8 or 0
 			else
 				e.bed_quality, e.bed = 0.4, 0
 			end
