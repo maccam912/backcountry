@@ -43,16 +43,24 @@ others join. Everyone starts in the same place.
   40 days (configurable) that starts on the first day of summer.
 - **Fire** – friction fire with a bow drill and tinder, with a chance that
   depends on tinder, rain, wind, cold hands and practice. Fuel, embers,
-  cooking, boiling, rain drowning an open fire.
+  cooking and boiling. Steady rain douses an exposed campfire and its embers
+  in fifteen game minutes, a downpour in half that. A roof keeps the fire going.
 - **Food** – foraging, fishing (bait, time of day, weather, overfishing),
   fish traps, snares, hunting with thrown rocks, spears and bows. Animals
-  notice movement, noise and scent on the wind. Meat spoils with temperature;
-  drying and cold preserve it.
+  notice movement, noise and scent on the wind. Follow a wounded animal's
+  bloody tracks to its carcass. Raw meat keeps about two days on average
+  in mild weather, longer when cooked or kept cold. Dried meat keeps indefinitely.
 - **Camp cookery** – make meals to share. Each cooking slot shows its progress,
   and a drying rack shows what is hanging on each line. An empty pot left
   outdoors can catch rain.
 - **Fieldcraft** – inspect signs left by passing wildlife, tend a berry patch,
   and mark trails between places worth visiting again.
+- **Timber** – fell a standing tree with a hatchet, then chop the grounded
+  trunk into logs. Leaves lose their support when the last connection to
+  a trunk is cut.
+- **Farming** – till a bed with a digging stick, plant wild onion bulbs or
+  cattail roots, and keep them watered. Riverbanks irrigate nearby beds,
+  rain waters exposed crops, and each harvest leaves enough to replant.
 - **Injury and illness** – bleeding, wounds, infection, sprains, food
   poisoning, dysentery, poisoning, each with its own treatment.
 - **Carrying** – everything has weight.
@@ -95,6 +103,12 @@ drink; hold Aux1 (E) while moving forward to sprint; sneak to stalk game, and
 sneak + use a mushroom to taste rather than eat it. Use a held garment to
 swap it with the one you are wearing. `/bc` gives operators
 commands for testing (`/bc info`, `/bc weather storm`, `/bc day 25`, ...).
+
+For a first bow and six arrows, gather **3 sticks and 6 green grass**. Open
+**I → Pack**. Put three grass in separate craft squares and take the cordage.
+Repeat, then put two sticks and two cordage in four squares to make the bow.
+One stick alone makes six arrows. Wield the bow and left-click to shoot from
+your pack. Pick up arrows where they land or recover them while butchering.
 
 ## Settings
 

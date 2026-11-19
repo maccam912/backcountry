@@ -64,9 +64,9 @@ local RAW = {aff = "food_poisoning", chance = 0.35, note = "raw_meat",
 	msg = "Your stomach turns. Raw meat was a gamble."}
 
 food("meat_raw", "Raw Meat", 0.5, {kcal = 220, water = 2, risk = RAW},
-	{_bc_spoil = {rate = 0.7, into = "bc:meat_spoiled"}, groups = {bc_raw_meat = 1, bc_bait = 1}})
+	{_bc_spoil = {rate = 0.46, into = "bc:meat_spoiled"}, groups = {bc_raw_meat = 1, bc_bait = 1}})
 food("meat_cooked", "Cooked Meat", 0.4, {kcal = 500, water = 0, cooked = true},
-	{_bc_spoil = {rate = 0.22, into = "bc:meat_spoiled"}})
+	{_bc_spoil = {rate = 0.15, into = "bc:meat_spoiled"}})
 food("meat_dried", "Dried Meat", 0.2, {kcal = 420, water = -4, cooked = true})
 food("meat_spoiled", "Spoiled Meat", 0.5, {kcal = 90, water = 0,
 	risk = {aff = "food_poisoning", chance = 0.9, msg = "It was rotten. You are going to regret that."}},
@@ -83,8 +83,8 @@ food("fat", "Fat", 0.4, {kcal = 380, water = 0, risk = {aff = "nausea", chance =
 food("berries_blue", "Blueberries", 0.03, {kcal = 40, water = 2}, {_bc_spoil = {rate = 0.3}, groups = {bc_berry = 1}})
 food("berries_red", "Raspberries", 0.03, {kcal = 35, water = 2}, {_bc_spoil = {rate = 0.4}, groups = {bc_berry = 1}})
 food("cactus_fruit", "Prickly Pear Fruit", 0.1, {kcal = 45, water = 7}, {_bc_spoil = {rate = 0.2}})
-food("onion", "Wild Onion", 0.05, {kcal = 30, water = 1})
-food("cattail_root", "Cattail Root", 0.2, {kcal = 60, water = 1})
+food("onion", "Wild Onion\nPlant a bulb on tilled soil.", 0.05, {kcal = 30, water = 1})
+food("cattail_root", "Cattail Root\nPlant on tilled soil or roast at a fire.", 0.2, {kcal = 60, water = 1})
 food("cattail_root_roasted", "Roasted Cattail Root", 0.15, {kcal = 130, water = 0, cooked = true})
 food("acorn", "Acorn", 0.02, {kcal = 30, water = -1,
 	risk = {aff = "nausea", chance = 0.5, note = "acorn", msg = "Bitter as bark. Your mouth puckers and your stomach complains."}})

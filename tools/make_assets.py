@@ -318,6 +318,27 @@ def blob(col, hi):
     return draw
 
 
+def farm():
+    # The lit lip and deep narrow groove tile into furrows across adjacent beds.
+    ridge = [0.70, 1.10, 1.24, 0.97, 0.77, 1.06, 1.17, 0.89]
+    soil = grainy((105, 78, 54), var=0.13, blotch=0.09, seed=119)
+    tile("furrows", lambda x, y, r: mul(soil(x, y, r), ridge[(x + int(5 < y < 11)) % 8]))
+
+    for crop, colour, tip in [("onion", (68, 116, 86), (141, 176, 111)),
+                              ("cattail", (65, 106, 52), (166, 165, 80))]:
+        for stage, height in [("shoots", 4), ("growing", 10)]:
+            def draw(d, img):
+                for x, offset in [(5, 1), (10, 0)]:
+                    for slant, shorten in [(-3, 2), (0, 0), (2, 1)]:
+                        y = 15 - height + offset + shorten
+                        end = x + (slant if stage == "growing" else slant // 2)
+                        d.line([(x, 15), (end, y)], fill=A(colour), width=2 if crop == "cattail" else 1)
+                        d.point((end, y), fill=A(tip))
+                    if crop == "onion" and stage == "growing":
+                        d.ellipse((x - 1, 13, x + 1, 15), fill=(186, 171, 129, 255))
+            sprite(f"{crop}_{stage}", draw, edge=False)
+
+
 def plants():
     def blades(col, col2, seed, n=7, top=3):
         def draw(d, img):
@@ -1398,6 +1419,7 @@ if __name__ == "__main__":
     terrain()
     trees()
     plants()
+    farm()
     items()
     food()
     pots_and_clothes()

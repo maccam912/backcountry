@@ -57,6 +57,8 @@ local function hours_text(h)
 end
 
 local STATE = {["bc:campfire_unlit"] = "unlit", ["bc:campfire"] = "lit", ["bc:campfire_embers"] = "embers"}
+-- Fifteen game minutes of steady rain soak a hearth. Storms soak it twice as fast.
+local SOAK_HOURS = 0.25
 
 local function cooking_status(meta, inv, i)
 	local rec = bc.cooking[inv:get_stack("src", i):get_name()]
@@ -76,9 +78,14 @@ local function formspec(pos)
 	if state == "lit" then
 		local rain = meta:get_float("rain_rate")
 		status = "Burning - " .. hours_text((meta:get_float("burn") + fuel_total(inv)) / (1 + rain * 0.7)) .. " of fuel"
-		if meta:get_int("rained") == 1 then status = status .. " (rain is eating it)" end
+		if meta:get_float("soaking") > 0 then
+			local remaining = math.max(0, SOAK_HOURS - meta:get_float("soaking")) / rain
+			status = "Rain is putting the fire out - " .. hours_text(remaining) .. " left"
+		end
 	elseif state == "embers" then
 		status = "Embers for " .. hours_text(meta:get_float("ember")) .. " - add fuel to rekindle"
+	elseif meta:get_int("doused") == 1 then
+		status = "Doused ashes - relight when sheltered or the weather clears"
 	elseif meta:get_int("used") == 1 then
 		status = "Cold ashes - add fuel, then light it"
 	else
@@ -172,37 +179,45 @@ local function on_timer(pos)
 	local room = bc.climate.analyze(pos)
 	local decay = room.enclosed and 0.15 * (1.4 - room.insulation) or 3
 	local burning_time, ember_time = 0, 0
+	local active_dt, rain, doused = dt, 0, false
+	if state == "lit" or state == "embers" then
+		local kind
+		rain, kind = rained_on(pos)
+		meta:set_float("rain_rate", rain)
+		local soaking = 0
+		if rain > 0 and (kind == "rain" or bc.weather.state == "storm") then
+			soaking = meta:get_float("soaking")
+			local remaining = math.max(0, SOAK_HOURS - soaking) / rain
+			active_dt = math.min(dt, remaining)
+			doused = dt >= remaining
+			soaking = soaking + active_dt * rain
+		end
+		meta:set_float("soaking", soaking)
+	end
 
 	if state == "lit" then
-		local rain = rained_on(pos)
-		meta:set_int("rained", rain > 0 and 1 or 0)
-		meta:set_float("rain_rate", rain)
 		local rate = 1 + rain * 0.7
-		local burn = meta:get_float("burn") - dt * rate
-		local out = false
-		if rain >= 2 and math.random() < 1 - math.exp(-1.2 * dt) then
-			out = true          -- a downpour can drown an open fire
-		end
-		while burn <= 0 and not out do
+		local burn = meta:get_float("burn") - active_dt * rate
+		while burn < 0 do
 			local hours, name = take_fuel(inv)
-			if hours <= 0 then out = true; break end
+			if hours <= 0 then break end
 			burn = burn + hours
 			if core.get_item_group(name, "tree") > 0 and math.random() < 0.5 then
 				if inv:room_for_item("dst", "bc:charcoal") then inv:add_item("dst", "bc:charcoal") end
 			end
 		end
 		-- A large sleep tick can cover several batches, or outlast the fuel.
-		burning_time = math.max(0, dt + math.min(0, burn) / rate)
+		burning_time = math.max(0, active_dt + math.min(0, burn) / rate)
 		heat = math.min(1, heat + burning_time * 5)
 		cook(meta, inv, burning_time)
-		if out then
+		if burn < 0 then
 			meta:set_float("burn", 0)
-			local lifetime = rain >= 2 and 0.5 or 3
-			ember_time = math.min(lifetime, dt - burning_time)
+			local lifetime = 3
+			ember_time = math.min(lifetime, active_dt - burning_time)
 			if ember_time > 0 then cook(meta, inv, ember_time * 0.5, true) end
 			meta:set_float("ember", lifetime - ember_time)
 			set_state(pos, ember_time < lifetime and "bc:campfire_embers" or "bc:campfire_unlit")
-		else
+		elseif not doused then
 			meta:set_float("burn", burn)
 			if math.random() < 0.6 then bc.sound("bc_fire", pos, 0.35, {max_hear_distance = 14}) end
 			core.add_particlespawner({
@@ -216,10 +231,10 @@ local function on_timer(pos)
 		end
 	elseif state == "embers" then
 		local left = meta:get_float("ember")
-		local ember = left - dt
-		ember_time = math.max(0, math.min(dt, left))
+		local ember = left - active_dt
+		ember_time = math.max(0, math.min(active_dt, left))
 		cook(meta, inv, ember_time * 0.5, true)
-		local hours = take_fuel(inv)
+		local hours = not doused and ember > 0 and take_fuel(inv) or 0
 		if hours > 0 then
 			meta:set_float("burn", hours)
 			set_state(pos, "bc:campfire")
@@ -231,6 +246,13 @@ local function on_timer(pos)
 	if ember_time > 0 then heat = math.max(0.45, heat - decay * ember_time) end
 	local cooling_time = math.max(0, dt - burning_time - ember_time)
 	heat = math.max(0, heat - decay * cooling_time)
+	if doused then
+		set_state(pos, "bc:campfire_unlit")
+		meta:set_int("doused", 1)
+		meta:set_float("burn", 0)
+		meta:set_float("ember", 0)
+		heat = 0
+	end
 
 	-- Store each hearth's contribution on the node so the room keeps its heat
 	-- between visits and across saves. An open room vents to the outside.
@@ -261,6 +283,9 @@ local function ignite(pos)
 		meta:set_float("burn", 0.6 * FUEL_LIFE)   -- the lay itself
 	end
 	meta:set_int("used", 1)
+	meta:set_int("doused", 0)
+	meta:set_float("soaking", 0)
+	meta:set_float("rain_rate", 0)
 	meta:set_float("last", bc.clock)
 	set_state(pos, "bc:campfire")
 	core.get_node_timer(pos):start(2)

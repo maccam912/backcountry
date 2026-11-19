@@ -83,7 +83,8 @@ end
 
 -- Prints belong to animals that actually crossed this patch of ground.
 -- They are short-lived objects so snow, plants and players' builds keep
--- their nodes and metadata. A creature can leave at most eight at once.
+-- their nodes and metadata. Blood signs get a separate budget so passing
+-- wildlife cannot erase a hunt between the hit and the carcass.
 local tracks = {
 	rabbit = {"Rabbit bounds", "The long hind feet land ahead of two small forefeet."},
 	deer = {"Deer slots", "Two pointed halves press together in each print."},
@@ -97,14 +98,18 @@ end
 bc.lore.all_tracks = {"An eye for tracks",
 	"Rabbit, grouse, deer, wolf and bear. You have read the tracks of every animal in this country."}
 
-local ring, occupied, next_slot = {}, {}, 1
-local MAX_PRINTS = 160
+local occupied = {}
+local print_ring = {refs = {}, next = 1, max = 160}
+local blood_ring = {refs = {}, next = 1, max = 256}
 
 local function still_visible(self)
 	if bc.clock - self.born > self.life then return false end
 	local floor = core.get_node_or_nil(self.ground)
 	local surface = core.get_node_or_nil(vector.offset(self.ground, 0, 1, 0))
-	return floor and floor.name == self.floor and surface and surface.name == self.surface
+	if not floor or floor.name ~= self.floor or not surface then return false end
+	if not self.blood or self.surface == "bc:snow" then return surface.name == self.surface end
+	local def = core.registered_nodes[surface.name]
+	return def and not def.walkable and def.liquidtype == "none" and surface.name ~= "bc:snow"
 end
 
 local function inspect(self, player)
@@ -112,7 +117,8 @@ local function inspect(self, player)
 	if not still_visible(self) then self.object:remove() return end
 	local age = bc.clock - self.born
 	local edge = age < self.life / 3 and "Sharp edges" or "Softening edges"
-	bc.toast(player, tracks[self.animal][1] .. ". " .. edge .. ", heading " .. self.direction .. ".")
+	local sign = self.blood and ("Blood beside " .. tracks[self.animal][1]:lower()) or tracks[self.animal][1]
+	bc.toast(player, sign .. ". " .. edge .. ", heading " .. self.direction .. ".")
 	if not bc.learn(player, "track_" .. self.animal) then return end
 	local notes = bc.state(player).p.notes
 	for animal in pairs(tracks) do
@@ -132,20 +138,27 @@ core.register_entity("bc:trail_print", {
 		local d = core.deserialize(data)
 		if not d or not tracks[d.animal] then self.object:remove() return end
 		self.animal, self.direction, self.life, self.ground = d.animal, d.direction, d.life, d.ground
-		self.born, self.floor, self.surface = bc.clock, d.floor, d.surface
+		self.born, self.floor, self.surface, self.blood = d.born or bc.clock, d.floor, d.surface, d.blood
+		if bc.clock - self.born > self.life then self.object:remove() return end
+		d.born = self.born
+		self.data = d
 		self.object:set_yaw(d.yaw)
-		self.object:set_properties({textures = {"bc_track_" .. d.animal .. ".png"},
-			infotext = "Animal tracks\nInspect the prints"})
+		local tex = "bc_track_" .. d.animal .. ".png"
+		self.object:set_properties({textures = {d.blood and (tex .. "^bc_track_blood.png") or tex},
+			static_save = d.blood == true,
+			infotext = d.blood and ("Bloody " .. d.animal .. " tracks\nInspect the trail") or "Animal tracks\nInspect the prints"})
 		self.object:set_armor_groups({immortal = 1})
 		self.key = core.hash_node_position(self.ground)
 		occupied[self.key] = self.object
 		-- Distance between settlements cannot multiply the server-wide budget.
 		-- New trails take the oldest slot, even when every slot is in use.
-		local old = ring[next_slot]
+		local ring = d.blood and blood_ring or print_ring
+		local old = ring.refs[ring.next]
 		if old and old:get_pos() then old:remove() end
-		ring[next_slot] = self.object
-		next_slot = next_slot % MAX_PRINTS + 1
+		ring.refs[ring.next] = self.object
+		ring.next = ring.next % ring.max + 1
 	end,
+	get_staticdata = function(self) return core.serialize(self.data) end,
 	on_deactivate = function(self)
 		if self.key and occupied[self.key] == self.object then occupied[self.key] = nil end
 	end,
@@ -159,38 +172,68 @@ core.register_globalstep(function(dt)
 	sweep = sweep + dt
 	if sweep < 3 then return end
 	sweep = 0
-	for i, ref in pairs(ring) do
-		local sign = ref:get_luaentity()
-		if not sign then ring[i] = nil
-		elseif not still_visible(sign) then ref:remove() end
+	for _, ring in ipairs({print_ring, blood_ring}) do
+		for i, ref in pairs(ring.refs) do
+			local sign = ref:get_luaentity()
+			if not sign then ring.refs[i] = nil
+			elseif not still_visible(sign) then ref:remove() end
+		end
 	end
 end)
 
-function bc.leave_print(self, previous, pos)
+local function blood_surface(pos)
+	-- Follow the actual surface, including rock, shallow snow and the
+	-- ground under tufts. Allow a little distance during a running hop.
+	for pt in core.raycast(vector.offset(pos, 0, 0.35, 0), vector.offset(pos, 0, -2.5, 0), false, true) do
+		local name = core.get_node(pt.under).name
+		local def = core.registered_nodes[name]
+		if not def or def.liquidtype ~= "none" then return end
+		if def.walkable or name == "bc:snow" then
+			if pt.intersection_normal.y == 1 then
+				local ground = name == "bc:snow" and vector.offset(pt.under, 0, -1, 0) or pt.under
+				return ground, core.get_node(ground).name, pt.intersection_point.y + 0.02
+			end
+			return
+		end
+	end
+end
+
+function bc.leave_print(self, previous, pos, force)
 	-- Read the movement the physics engine allowed. The velocity an animal
 	-- asks for may point straight into a wall, and cannot establish a trail.
 	local dx, dz = pos.x - previous.x, pos.z - previous.z
 	local moved = dx * dx + dz * dz
-	if moved < 0.09 or moved > 20 * 20 then return end
-	if self.last_print and bc.hdist(self.last_print, pos) < self.print_spacing then return end
-	local ground = vector.round(vector.offset(pos, 0, -0.4, 0))
+	if not force and (moved < 0.09 or moved > 20 * 20) then return end
+	if not force and self.last_print and bc.hdist(self.last_print, pos) < self.print_spacing then return end
+	local ground, floor, height
+	if self.wounded then
+		ground, floor, height = blood_surface(pos)
+		if not ground then return end
+	else
+		ground = vector.round(vector.offset(pos, 0, -0.4, 0))
+		floor = core.get_node(ground).name
+		if core.get_item_group(floor, "soil") == 0 and floor ~= "bc:sand"
+				and floor ~= "bc:gravel" and floor ~= "bc:snow_block" then return end
+	end
 	local other = occupied[core.hash_node_position(ground)]
-	if other and other:get_pos() then return end
-	local floor = core.get_node(ground).name
-	if core.get_item_group(floor, "soil") == 0 and floor ~= "bc:sand"
-			and floor ~= "bc:gravel" and floor ~= "bc:snow_block" then return end
+	if other and other:get_pos() then
+		if not self.wounded or other:get_luaentity().blood then return end
+		other:remove()
+	end
 	local surface = core.get_node(vector.offset(ground, 0, 1, 0)).name
-	if surface ~= "air" and surface ~= "bc:snow" then return end
-	local height = ground.y + (surface == "bc:snow" and 0.77 or 0.52)
+	if not self.wounded and surface ~= "air" and surface ~= "bc:snow" then return end
+	height = height or ground.y + (surface == "bc:snow" and 0.77 or 0.52)
 	local snow = surface == "bc:snow" or floor == "bc:snow_block" or floor == "bc:dirt_snow"
-	local heading = {x = dx, y = 0, z = dz}
-	local obj = core.add_entity({x = ground.x, y = height, z = ground.z}, "bc:trail_print",
+	local heading = moved >= 0.09 and {x = dx, y = 0, z = dz} or core.yaw_to_dir(self.yaw or 0)
+	local at = {x = self.wounded and pos.x or ground.x, y = height, z = self.wounded and pos.z or ground.z}
+	local obj = core.add_entity(at, "bc:trail_print",
 		core.serialize({animal = self.def.name, direction = bc.compass(heading),
-			yaw = core.dir_to_yaw(heading), life = snow and 2.5 or 1.5,
+			yaw = core.dir_to_yaw(heading), blood = self.wounded, life = self.wounded and 24 or snow and 2.5 or 1.5,
 			ground = ground, floor = floor, surface = surface}))
 	if not obj then return end
 	self.last_print = vector.new(pos)
-	self.print_spacing = 4 + math.random() * 2
+	self.print_spacing = self.wounded and 2 or 4 + math.random() * 2
+	if self.wounded then return end
 	self.prints = self.prints or {}
 	self.prints[#self.prints + 1] = obj
 	if #self.prints > 8 then

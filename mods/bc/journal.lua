@@ -34,7 +34,7 @@ bc.objectives = {
 	{"sleep", "Sleep through a night", "Make a bed from boughs or a pallet from dry grass. Choose a warm spot to sleep."},
 	{"shelter", "Sleep in a sealed shelter", "Wall in a small space, add a roof and shut the door. Well-insulated walls keep out heat and cold."},
 	{"cook", "Eat a cooked meal", "Put raw meat or fish on a burning fire."},
-	{"hatchet", "Make a hatchet", "Rock, stick and cordage. Logs burn for hours and build solid walls."},
+	{"hatchet", "Make a hatchet", "Rock, stick and cordage. Chop a tree to fell it, then chop the fallen trunk for logs."},
 	{"fish", "Catch a fish", "Carve a hook, tie a pole, cast onto water and strike when the float dips."},
 	{"trap", "Snare a rabbit", "Set snares on open ground well away from camp and check them next morning."},
 	{"hunt", "Bring down an animal", "Stalk low and slow with the wind in your face. A spear or a bow does the rest."},
@@ -123,9 +123,10 @@ local HINTS = {
 	fire_rain = "Rain makes fire-lighting very hard. Lay the fire under a roof, or find tinder that burns wet.",
 	sleep = "While everyone in the group sleeps, the night passes in moments. Jump to get up early.",
 	infection = "An infected wound drains you for days. Dress wounds promptly. Something in the forest fights infection.",
-	spoilage = "Some of your food has spoiled. Fresh meat keeps a day or so in mild weather, longer in the cold. Dried on a rack it keeps for good.",
+	spoilage = "Some of your food has spoiled. Raw meat keeps about two days on average in mild weather. Cook it for a longer trip or dry it on a rack to keep it indefinitely.",
 	bleeding = "You are bleeding. Use a bandage (two cordage) on yourself, or have a companion punch you with one.",
 	predator = "A predator is coming for you. Fire keeps wolves back; a spear makes them think again. You cannot outrun them.",
+	blood_trail = "The animal is bleeding. Look for red drops beside its tracks. Right-click a print to read its direction.",
 	butcher = "Right-click the carcass with a knife or sharp stone in hand to butcher it, one cut at a time.",
 	fishing = "Watch the float. When it dips you get a moment to use the pole again and set the hook. Dawn and dusk fish best.",
 	dark = "It is very dark. A torch (stick and birch bark) lit at a fire gives light you can carry.",
@@ -232,7 +233,7 @@ Fire is warmth, safe water, cooked food, light, and a reason for wolves to stay 
 <b>Light it:</b> hold a bow drill and punch the lay. You need tinder in your pack: dry grass is the common kind, and green grass dries on a rack. It will often fail. Each try teaches you something, and each costs effort. Wind and rain work against you; a roof and walls help.
 <b>Feed it:</b> right-click the fire and add fuel. Sticks burn in minutes, logs for hours. When the fuel is gone it sinks to embers, which will catch again if fed in time.
 
-Rain eats an open fire. A storm can drown it.
+Steady rain soaks an open fire through in about fifteen game minutes. A downpour takes half that time. Cover the hearth to keep the flames and coals alive. Spare fuel stays in the fire lay when the fire goes out.
 
 Not all tinder is equal, and a drill is not the only way to make a spark. Keep your eyes open.
 
@@ -241,7 +242,7 @@ Put raw food or a pot of water on the fire to cook it. Cattail roots and berry c
 <big><b>Shelter and warmth</b></big>
 
 <b>Wind</b> strips heat. Anything solid between you and it helps: a wall, a rock face, thick trees.
-<b>A roof</b> keeps you dry. Wet clothes lose most of their warmth.
+<b>A roof</b> keeps you dry. Four handfuls of grass or leafy boughs make three thatch panels. Loose leaves decay when cut off from a trunk.
 <b>A sealed space</b> softens the swing from day to night. Earth around the floor and walls keeps a dugout closer to the local ground temperature. A cave in cold high country can stay cold even in summer. Thatch and daub insulate well. Bare stone loses heat faster, though its mass takes longer to warm and cool.
 <b>A fire inside</b> gradually raises the room's air temperature. A small hut warms faster, and good insulation keeps warmth in after the flames die. Open the door to let heat out. You can also feel the fire directly when you stand in sight of it.
 <b>Company</b> adds a little warmth when you share a shelter.
@@ -264,6 +265,16 @@ Plants will not make you fat, but they keep you going while you learn to hunt.
 Before leaving a picked berry bush, look at its new growth. Fallen mossy logs are worth a closer look too.
 
 Some plants are worth more as medicine or tinder than as food. Pick things up; your journal notes what you learn.]]},
+	{"Farming", [[
+<big><b>Farming</b></big>
+
+Dig up a <b>wild onion</b> in a meadow or a <b>cattail root</b> on a riverbank. Save one to plant.
+
+Clear a patch of soil with daylight overhead. Right-click its top with a <b>digging stick</b> to cut furrows. Right-click the furrows with the bulb or root to plant it.
+
+Water within two blocks irrigates the bed. Farther inland, right-click the bed or the crop with a full waterskin or pot of water. Untreated water works. A watering lasts a game day, and rain wets exposed beds too. A dry or shaded crop waits for better conditions.
+
+Onions flower after about <b>18 game hours</b> of growth. Cattails grow brown heads after <b>one game day</b>. Right-click the ripe crop to lift a clump. Keep one bulb or root to start the next crop.]]},
 	{"Fishing and trapping", [[
 <big><b>Fishing and trapping</b></big>
 
@@ -283,9 +294,11 @@ Meat is the food that actually sustains you. Getting it is a skill.
 
 Animals notice movement, noise and scent. <b>Sneak</b> and they notice you from less than half as far. Sprint and the whole wood knows. Stand still and you fade.
 
-A <b>thrown rock</b> will kill a grouse. A <b>spear</b> (right-click to throw) will take a rabbit and wound a deer. A <b>bow</b> is the hunter's tool, once you find what arrows need.
+A <b>thrown rock</b> will take a grouse. Right-click to throw a <b>spear</b> or left-click to shoot a <b>bow</b>. Find both the bow and arrows in the Crafting tab under Hunting. One stick makes six arrows.
 
-Butcher a carcass by right-clicking it with a knife in hand. Meat first, then hide, then the rest. Sinew, bone, antler and fat all have uses.
+An animal wounded by an arrow or spear bleeds until it goes down. Look for red drops beside the tracks. Right-click them to read which way it went, even over bare stone. If an arrow misses, you can pick it up where it lands.
+
+Right-click the carcass with a knife or sharp stone. The first cut returns meat and any arrows. Keep cutting for hide and the rest.
 
 <b>Wolves</b> hunt at night, and by day if you are weak or smell of fresh meat. <b>Bears</b> want to be left alone: give them room.
 

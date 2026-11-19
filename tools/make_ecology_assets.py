@@ -90,6 +90,14 @@ def prints():
                     d.ellipse((x+dx-1, ty-1, x+dx, ty+1), fill=ink)
         save(im, f"track_{animal}")
 
+    im = Image.new("RGBA", (32, 32))
+    d = ImageDraw.Draw(im)
+    for x, y, r in [(6, 22, 3), (13, 27, 2), (18, 10, 3), (23, 6, 1), (15, 16, 1)]:
+        d.ellipse((x-r, y-r, x+r, y+r), fill="#641d24")
+        d.ellipse((x-r, y-r, x+r-1, y+r-1), fill="#ba3430")
+        d.point((x-r+1, y-r+1), fill="#e2674c")
+    save(im, "track_blood")
+
     (MOD / "models/bc_trail_print.obj").write_text(
         "# Track on the ground, +Z is forward. One Luanti block is ten OBJ units.\n"
         "o trail_print\nv -3.4 0 -4.2\nv 3.4 0 -4.2\nv 3.4 0 4.2\nv -3.4 0 4.2\n"

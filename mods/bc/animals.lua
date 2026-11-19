@@ -5,6 +5,7 @@ bc.animals = {}
 
 local DENSITY = tonumber(core.settings:get("bc_wildlife")) or 1.0
 local GRAVITY = {x = 0, y = -9.81, z = 0}
+local BLEED_PER_SECOND = 2
 
 local function yaw_dir(yaw) return {x = -math.sin(yaw), y = 0, z = math.cos(yaw)} end
 
@@ -74,7 +75,7 @@ local function perceives(def, pos, player, dist)
 	return true, upwind and dist > def.sight * plain
 end
 
-local function become_carcass(self)
+local function become_carcass(self, just_fell)
 	local obj = self.object
 	local def = self.def
 	self.dead = true
@@ -82,6 +83,9 @@ local function become_carcass(self)
 	obj:set_velocity({x = 0, y = 0, z = 0})
 	obj:set_acceleration(GRAVITY)
 	local half = (def.box[4] or 0.3)
+	-- The living mesh stands on its origin. Its side extends below that
+	-- origin after rotation, so lift it clear before changing the box.
+	if just_fell then obj:set_pos(vector.offset(obj:get_pos(), 0, half, 0)) end
 	obj:set_properties({
 		collisionbox = {-0.3, -half, -0.3, 0.3, 0.1, 0.3},
 		selectionbox = {-half * 1.6, -half, -half * 1.6, half * 1.6, half * 0.6, half * 1.6},
@@ -91,9 +95,9 @@ local function become_carcass(self)
 	obj:set_rotation({x = 0, y = self.yaw or 0, z = math.pi / 2})
 end
 
-local function die(self, killer)
+local function die(self, killer, when)
 	local def = self.def
-	self.died = bc.clock
+	self.died = when or bc.clock
 	self.parts = {}
 	for _, part in ipairs(def.butcher) do
 		local item, count, chance = part[1], part[2] or 1, part[3] or 1
@@ -101,11 +105,24 @@ local function die(self, killer)
 			for _ = 1, count do self.parts[#self.parts + 1] = item end
 		end
 	end
-	become_carcass(self)
+	become_carcass(self, true)
 	if killer and killer:is_player() then
 		bc.objective(killer, "hunt")
 		bc.hint(killer, "butcher")
 	end
+end
+
+local function bleed(self, seconds, since)
+	local remaining = self.hp / BLEED_PER_SECOND
+	if seconds < remaining then
+		self.hp = self.hp - seconds * BLEED_PER_SECOND
+		return
+	end
+	-- If the mapblock was unloaded, the carcass dates from when the
+	-- animal went down, even if the hunter returns much later.
+	local when = since and math.min(bc.clock, since + remaining / bc.real_seconds(1)) or bc.clock
+	self.hp = 0
+	die(self, self.hunter and core.get_player_by_name(self.hunter), when)
 end
 
 local function attack(self, def, target, pos)
@@ -268,10 +285,17 @@ local function on_step(self, dtime, moveresult)
 		return
 	end
 	local def = self.def
+	if self.wounded then
+		bleed(self, dtime)
+		if self.dead then
+			bc.leave_print(self, self.print_sample or pos, pos, true)
+			return
+		end
+	end
 	self.print_timer = (self.print_timer or math.random()) - dtime
 	if self.print_timer <= 0 then
-		self.print_timer = 0.6 + math.random() * 0.2
-		if self.print_sample and moveresult and moveresult.touching_ground then
+		self.print_timer = self.wounded and 0.25 or 0.6 + math.random() * 0.2
+		if self.print_sample and (self.wounded or (moveresult and moveresult.touching_ground)) then
 			bc.leave_print(self, self.print_sample, pos)
 		end
 		self.print_sample = vector.new(pos)
@@ -320,6 +344,7 @@ local function on_step(self, dtime, moveresult)
 	if swimming then vy = sim.clamp(vy, -1, 1.2) end
 	if hop and not swimming then vy = 5.4 end
 	local speed, yaw = self.speed or 0, self.yaw or 0
+	if self.wounded then speed = speed * 0.7 end
 	obj:set_velocity({x = -math.sin(yaw) * speed, y = vy, z = math.cos(yaw) * speed})
 	obj:set_yaw(yaw)
 end
@@ -327,19 +352,41 @@ end
 local function on_punch(self, puncher, _, _, dir, damage)
 	if self.dead then return true end
 	local def = self.def
+	local projectile = puncher and puncher:get_luaentity()
+	if projectile and projectile.name ~= "bc:projectile" then projectile = nil end
+	local attacker = puncher
+	local weapon
+	if projectile then
+		attacker = projectile.owner and core.get_player_by_name(projectile.owner)
+		weapon = projectile.item
+	elseif attacker and attacker:is_player() then
+		weapon = attacker:get_wielded_item():get_name()
+	end
+	local pos = self.object:get_pos()
+	local new_wound = not self.wounded and (damage or 0) > 0 and
+		((projectile and weapon == "bc:arrow") or (weapon and core.get_item_group(weapon, "bc_spear") > 0))
+	if new_wound then self.wounded = true end
+	if self.wounded and attacker and attacker:is_player() then self.hunter = attacker:get_player_name() end
+	if projectile and weapon == "bc:arrow" then self.arrows = (self.arrows or 0) + 1 end
 	self.hp = self.hp - (damage or 0)
-	bc.sound("bc_hurt", self.object:get_pos(), 0.5)
+	bc.sound("bc_hurt", pos, 0.5)
 	if self.hp <= 0 then
-		die(self, puncher)
+		if self.wounded then bc.leave_print(self, self.print_sample or pos, pos, true) end
+		die(self, attacker)
 		return true
 	end
 	if dir then self.object:add_velocity({x = dir.x * 3, y = 2, z = dir.z * 3}) end
-	local from = puncher and puncher:get_pos()
+	local from = attacker and attacker:get_pos() or (dir and vector.subtract(pos, dir))
 	if def.predator then
 		self.provoked = true
-		if self.hp < def.hp * 0.4 and from then flee_from(self, self.object:get_pos(), from, 10) end
+		if self.hp < def.hp * 0.4 and from then flee_from(self, pos, from, 10) end
 	elseif from then
-		flee_from(self, self.object:get_pos(), from, 9)
+		flee_from(self, pos, from, 9)
+	end
+	if new_wound then
+		self.print_sample, self.print_timer = vector.new(pos), 0
+		bc.leave_print(self, pos, pos, true)
+		if attacker and attacker:is_player() then bc.hint(attacker, "blood_trail") end
 	end
 	return true
 end
@@ -359,6 +406,12 @@ local function on_rightclick(self, clicker)
 	local item = table.remove(self.parts or {}, 1)
 	if item then
 		bc.give(clicker, item)
+		if self.arrows then
+			bc.give(clicker, "bc:arrow " .. self.arrows)
+			bc.toast(clicker, self.arrows == 1 and "You recover your arrow." or "You recover the arrows.")
+			self.arrows = nil
+		end
+		if self.hunter == clicker:get_player_name() then bc.objective(clicker, "hunt") end
 		bc.exert(clicker, 5, 0.1)
 		stack:add_wear(65535 / 140)
 		clicker:set_wielded_item(stack)
@@ -390,20 +443,30 @@ local function register_animal(name, def)
 		def = def,
 		on_activate = function(self, staticdata, dtime_s)
 			local data = staticdata ~= "" and core.deserialize(staticdata) or {}
-			if (dtime_s or 0) > 900 and not data.dead then
+			if (dtime_s or 0) > 900 and not data.dead and not data.wounded then
 				self.object:remove()
 				return
 			end
 			self.hp = data.hp or def.hp
 			self.dead, self.parts, self.died = data.dead, data.parts, data.died
-			self.yaw = math.random() * math.pi * 2
+			self.wounded, self.hunter, self.arrows = data.wounded, data.hunter, data.arrows
+			self.yaw = data.yaw or math.random() * math.pi * 2
 			self.state, self.speed, self.timer = "idle", 0, math.random() * 3
 			self.object:set_armor_groups({fleshy = 100})
 			self.object:set_acceleration(GRAVITY)
-			if self.dead then become_carcass(self) end
+			if self.dead then
+				become_carcass(self)
+			elseif self.wounded then
+				self.state, self.speed = "flee", def.run
+				self.flee_until = core.get_us_time() + 9000000
+				bleed(self, dtime_s or 0, data.saved_at)
+			end
+			if self.dead and self.died and bc.clock - self.died > 24 then self.object:remove() end
 		end,
 		get_staticdata = function(self)
-			return core.serialize({hp = self.hp, dead = self.dead, parts = self.parts, died = self.died})
+			return core.serialize({hp = self.hp, dead = self.dead, parts = self.parts, died = self.died,
+				wounded = self.wounded, hunter = self.hunter, arrows = self.arrows,
+				yaw = self.wounded and self.yaw, saved_at = self.wounded and bc.clock})
 		end,
 		on_step = on_step,
 		on_punch = on_punch,

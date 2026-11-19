@@ -35,10 +35,15 @@ core.register_entity("bc:projectile", {
 					or e.name == "bc:trail_print" or e.name == "__builtin:item")) or (ref:is_player() and not PVP)
 				if not skip then
 					local vel = obj:get_velocity()
-					ref:punch(owner or obj, 1.0,
+					local animal = e and e.def and bc.animals[e.def.name]
+					local embedded = animal and not e.dead and self.item == "bc:arrow"
+					ref:punch(animal and obj or owner or obj, 1.0,
 						{full_punch_interval = 1.0, damage_groups = {fleshy = self.damage}}, vector.normalize(vel))
-					bc.sound("bc_hit", pos, 0.6)
-					if self.drop and math.random() <= self.drop then core.add_item(pos, self.drop_stack or self.item) end
+					local at = pt.intersection_point or pos
+					bc.sound("bc_hit", at, 0.6)
+					if not embedded and self.drop and math.random() <= self.drop then
+						core.add_item(at, self.drop_stack or self.item)
+					end
 					obj:remove()
 					return
 				end
@@ -66,6 +71,7 @@ local function launch(user, item, opts)
 	local obj = core.add_entity(vector.add(pos, vector.multiply(dir, 0.5)), "bc:projectile")
 	if not obj then return end
 	local e = obj:get_luaentity()
+	e.last = pos
 	e.owner = user:get_player_name()
 	e.item = item
 	e.damage = opts.damage
@@ -108,8 +114,11 @@ function bc.hunt.shoot(stack, user)
 		bc.toast(user, "You have no arrows.")
 		return stack
 	end
+	if not launch(user, "bc:arrow", {damage = 9, speed = 40, drop = 1}) then
+		bc.give(user, "bc:arrow")
+		return stack
+	end
 	st.throw_at = now
-	launch(user, "bc:arrow", {damage = 9, speed = 40, drop = 0.75})
 	bc.sound("bc_bow", user, 0.6)
 	bc.exert(user, 2, 0.03)
 	stack:add_wear(65535 / 120)
@@ -210,7 +219,7 @@ core.register_craftitem("bc:rabbit_dead", {
 	inventory_image = "bc_rabbit_dead.png",
 	stack_max = 4,
 	_bc_weight = 1.5,
-	_bc_spoil = {rate = 0.6, into = "bc:meat_spoiled"},
+	_bc_spoil = {rate = 0.4, into = "bc:meat_spoiled"},
 	on_use = function(stack, user)
 		local i, knife = bc.find_group(user, "bc_knife")
 		if not i then

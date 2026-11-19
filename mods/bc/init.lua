@@ -14,6 +14,7 @@ for _, file in ipairs({
 	"crafting",  -- recipes and what each player knows
 	"climate",   -- weather, temperature, shelter analysis
 	"fire",      -- campfires, cooking, torches
+	"farming",   -- tilled beds, irrigation and root crops
 	"trail",     -- bearings to camp and the last lost pack
 	"build",     -- shelter parts, beds, storage, racks
 	"campcraft", -- field tools and camp utilities

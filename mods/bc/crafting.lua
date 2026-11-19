@@ -125,9 +125,11 @@ craft("fishing_rod", "Hunting", "bc:fishing_rod", {"bc:stick", "bc:cordage", "bc
 craft("fish_trap", "Hunting", "bc:fish_trap", join(n("bc:stick", 6), n("bc:cordage", 2)),
 	{unlock = {"bc:fish_raw"}, note = "A funnel basket. Sink it in water and it fishes while you do other things."})
 craft("bow", "Hunting", "bc:bow", {"bc:stick", "bc:stick", "bc:cordage", "bc:cordage"},
-	{unlock = {"bc:feather"}, note = "A bent stave and a cord. Needs arrows."})
-craft("arrow", "Hunting", "bc:arrow 2", {"bc:stick", "bc:flint", "bc:feather"},
-	{unlock = {"bc:feather", "bc:flint"}, note = "Flint point, feather fletching. Most can be recovered."})
+	{note = "Left-click to shoot an arrow from your pack."})
+craft("arrow", "Hunting", "bc:arrow 6", {"bc:stick"},
+	{note = "One stick supplies six arrows. Pick up misses where they land and recover hits when you butcher."})
+craft("arrow_fletched", "Hunting", "bc:arrow 12", {"bc:stick", "bc:flint", "bc:feather"},
+	{unlock = {"bc:feather", "bc:flint"}, note = "Use spare feathers and flint for a double batch."})
 
 -- Clothing --------------------------------------------------------------
 craft("grass_cape", "Clothing", "bc:grass_cape", join(n("bc:grass", 6), n("bc:cordage", 2)),

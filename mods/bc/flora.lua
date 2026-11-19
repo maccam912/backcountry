@@ -1,6 +1,7 @@
 -- Trees, plants and how they come back.
 local S = bc.snd
 bc.trees = {}
+local forest = dofile(bc.modpath .. "/forestry.lua")
 
 -- ---------------------------------------------------------------------
 -- Tree shapes, built as schematic tables so no binary files are needed.
@@ -50,8 +51,8 @@ local function broadleaf(trunk, leaves, h, rh, rv)
 end
 
 local function register_tree(id, def)
-	local trunk, leaves, sapling = "bc:" .. id .. "_trunk", "bc:" .. id .. "_leaves", "bc:" .. id .. "_sapling"
-	core.register_node(trunk, {
+	local leaves, sapling = "bc:" .. id .. "_leaves", "bc:" .. id .. "_sapling"
+	local trunk = forest.register(id, def.name, {
 		description = def.name .. " Log",
 		tiles = {"bc_" .. id .. "_trunk_top.png", "bc_" .. id .. "_trunk_top.png", "bc_" .. id .. "_trunk.png"},
 		paramtype2 = "facedir",
@@ -76,12 +77,15 @@ local function register_tree(id, def)
 		groups = {snappy = 3, leaves = 1, flammable = 2, bc_insul = 3, bc_thatch = 1},
 		drop = {max_items = 1, items = drops},
 		sounds = S.leaves,
-		-- param2 = 1 marks leaves a person placed, so they never decay
 		after_place_node = function(pos)
+			-- Old trees can be recognised by their original wild crown.
 			local node = core.get_node(pos)
 			node.param2 = 1
 			core.swap_node(pos, node)
+			core.get_node_timer(pos):start(math.random(3, 12))
 		end,
+		after_dig_node = forest.leaf_dug,
+		on_timer = forest.decay,
 		_bc_weight = 0.4,
 		_bc_fuel = 0.18,
 		_bc_effort = {1, 0.03},
@@ -129,25 +133,6 @@ register_tree("oak", {
 register_tree("birch", {
 	name = "Birch",
 	schems = function(t, l) return {broadleaf(t, l, 5, 1.9, 2.3), broadleaf(t, l, 6, 2.2, 2.6)} end,
-})
-
--- Leaves with no trunk nearby fall away, sometimes leaving a stick.
-core.register_abm({
-	label = "bc leaf decay",
-	nodenames = {"group:leaves"},
-	interval = 7,
-	chance = 10,
-	action = function(pos, node)
-		if node.param2 ~= 0 then return end
-		if core.find_node_near(pos, 3, {"group:tree"}) then return end
-		core.remove_node(pos)
-		local r = math.random(30)
-		if r <= 5 then
-			core.add_item(pos, "bc:stick")
-		elseif r == 6 then
-			core.add_item(pos, (node.name:gsub("_leaves$", "_sapling")))
-		end
-	end,
 })
 
 -- Living trees shed dead wood: a renewable trickle of sticks under canopy.

@@ -301,6 +301,7 @@ local function world_checks()
 	end
 	check(meta:get_float("heat") < 0.1, "open fire kept its heat: " .. meta:get_float("heat"))
 	core.remove_node(fp)
+	dofile(core.get_modpath("bc_probe") .. "/fire_weather.lua")(check, fp)
 
 	-- Opposite ends of a long hut share air. A hearth beyond its wall belongs to a different space.
 	local endwall = vector.offset(c, 0, 0, -4)
@@ -355,20 +356,23 @@ local function world_checks()
 	core.set_node(bp, {name = "bc:basket"})
 	local binv = core.get_meta(bp):get_inventory()
 	binv:add_item("main", "bc:meat_raw 20")
-	bc.spoil_list(binv, "main", 25, 48)
-	check(binv:contains_item("main", "bc:meat_spoiled 10"), "meat did not spoil in two warm days")
-	binv:set_list("main", {})
-	binv:add_item("main", "bc:meat_raw 20")
-	bc.spoil_list(binv, "main", -8, 48)
-	check(binv:contains_item("main", "bc:meat_raw 18"), "meat spoiled while frozen")
+	local raw_rate = core.registered_items["bc:meat_raw"]._bc_spoil.rate
+	local cooked_rate = core.registered_items["bc:meat_cooked"]._bc_spoil.rate
+	local raw_loss = bc.sim.spoil_chance(raw_rate, 15, 24)
+	check(raw_loss > 0.3 and raw_loss < 0.4 and bc.sim.spoil_chance(cooked_rate, 15, 24) < 0.16,
+		"raw or cooked meat spoils too quickly in mild weather")
+	bc.spoil_list(binv, "main", 25, 24 * 100)
+	check(binv:contains_item("main", "bc:meat_spoiled 20"), "meat did not spoil in long-term warm storage")
+	check(bc.sim.spoil_chance(raw_rate, -8, 48) < 0.02, "meat spoiled too quickly while frozen")
 	bc.clock = t0
 
 	-- trees grow from saplings
 	local tp = {x = c.x + 4, y = floor, z = c.z + 4}
 	core.set_node(tp, {name = "bc:pine_sapling"})
 	core.registered_nodes["bc:pine_sapling"].on_timer(tp)
-	check(core.find_node_near(tp, 3, {"bc:pine_trunk"}), "sapling did not grow")
+	check(core.find_node_near(tp, 3, {bc.trees.pine.trunk}, true), "sapling did not grow")
 
+	dofile(core.get_modpath("bc_probe") .. "/forestry.lua")(check, vector.offset(tp, 14, -5, 0))
 	note("phase1", "done")
 	if not wait_player then finish() end
 end
@@ -732,8 +736,10 @@ local function player_checks(player)
 		st.p.crafted = saved_crafted
 
 		local probe = core.get_modpath("bc_probe")
+		dofile(probe .. "/forestry.lua")(check, vector.offset(q, 18, 3, 0), player)
 		dofile(probe .. "/camp.lua")(check, player, q)
 		dofile(probe .. "/ecology.lua")(player, check, q)
+		dofile(probe .. "/farming.lua")(player, check, q)
 		dofile(probe .. "/campcraft.lua")(player, check)
 
 		-- operator commands
@@ -832,7 +838,9 @@ local function player_checks(player)
 			check(st.p.deaths == 1, "death not counted")
 			check(inv:get_stack("clothing", 2):get_name() == "bc:shirt", "not re-dressed after death")
 			note("phase2", "done")
-			core.after(1, finish)
+			core.after(1, function() guarded("bow hunt", function()
+				dofile(probe .. "/hunting.lua")(player, check, note, guarded, finish)
+			end) end)
 		end) end)
 		end) end)
 	end) end)

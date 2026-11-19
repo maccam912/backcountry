@@ -71,17 +71,17 @@ tool("knife_flint", "Flint Knife", 0.3, {
 	damage_groups = {fleshy = 3},
 }, {groups = {bc_knife = 2, bc_keep = 1}})
 
-tool("hatchet", "Stone Hatchet\nFells trees, slowly.", 1.2, {
+tool("hatchet", "Stone Hatchet\nChop a standing tree, then cut the fallen trunk into logs.", 1.2, {
 	full_punch_interval = 1.2, max_drop_level = 0,
 	groupcaps = {choppy = {times = {[1] = 4.2, [2] = 2.4, [3] = 1.4}, uses = 30, maxlevel = 0}},
 	damage_groups = {fleshy = 4},
 })
 
-tool("digging_stick", "Digging Stick", 0.6, {
+tool("digging_stick", "Digging Stick\nRight-click the top of bare soil to till a garden bed.", 0.6, {
 	full_punch_interval = 1.0, max_drop_level = 0,
 	groupcaps = {crumbly = {times = {[1] = 2.6, [2] = 1.4, [3] = 0.7}, uses = 50, maxlevel = 0}},
 	damage_groups = {fleshy = 2},
-})
+}, {on_place = function(stack, user, pt) return bc.till_soil(stack, user, pt) end})
 
 tool("pick_antler", "Antler Pick\nPries rock apart.", 1.4, {
 	full_punch_interval = 1.3, max_drop_level = 0,
